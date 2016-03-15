@@ -10,9 +10,24 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Opaleye.TF
-       (type Col, Table(..), Expr, select, Compose(..), leftJoin,
-        PGTypes(..), InterpretPGType, InterpretNull, Interpret, restrict,
-        (==.), queryTable, Insertion, Default(..), insert, lit)
+       ( -- $intro
+         -- * The 'Col' type family
+         type Col,
+
+         -- * Mapping PostgreSQL types
+         PGTypes(..), lit,
+
+         -- * Defining tables
+         Table(..),
+
+         -- * Querying tables
+         queryTable, Expr, select, leftJoin, restrict, (==.),
+
+         -- * Inserting data
+         insert, Insertion, Default(..),
+
+         -- * Implementation details
+         Compose(..), InterpretPGType, InterpretNull, Interpret)
        where
 
 import Control.Applicative
@@ -56,7 +71,8 @@ import qualified Opaleye.RunQuery as Op
 import qualified Opaleye.Sql as Op
 import qualified Opaleye.Table as Op hiding (required)
 
--- This type family is responsible for a lot of magic, and is indispensible.
+-- | This type family is responsible for a lot of magic, and is indispensible.
+-- Essentially, the 'Col' type family lets
 -- It's basically doing function application at the type level, but with a bit
 -- of normalization thrown in.
 
@@ -422,3 +438,111 @@ insert conn table rows =
   Op.runInsertMany conn
                    (insertTable table)
                    rows
+
+{- $intro
+
+Welcome to @opaleye-tf@, a library to query and interact with PostgreSQL
+databases. As the name suggests, this library builds on top of the terrific
+@opaleye@ library, but provides a different API that the author believes
+provides more succinct code with better type inference.
+
+The basic idea behind @opaleye-tf@ is to \"pivot\" around the ideas in
+@opaleye@. The current idiomatic usage of Opaleye is to define your records as
+data types where each field is parameterized. Opaleye then varies all of these
+parameters together. @opaleye-tf@ makes the observation that if all of these
+vary uniformly, then there should only be /one/ parameter, and thus we have
+records that are parameterized by functors.
+
+To take an example, let's consider a simple schema for Hackage - the repository
+of Haskell libraries.
+
+@
+    data Package f =
+      Package { packageName :: 'Col' f 'PGText'
+              , packageAuthor :: Col f \''PGInteger'
+              , packageMaintainerId :: Col f (\''PGNull' \''PGInteger')
+              }
+
+    data User f =
+      User { userId :: 'Col' f \''PGInteger'
+           , userName :: 'Col' f \''PGText'
+           , userBio :: 'Col' f (\''PGNull' 'PGText')
+           }
+@
+
+In this example, each record (@Package@ and @User@) correspond to tables in a
+PostgreSQL database. These records are parameterized over functors @f@, which
+will provide /meaning/ depending on how the record is used. Notice all that
+we specify the types as they are in PostgreSQL. @opaleye-tf@ primarily focuses
+on the flow of information /from/ the database.
+
+One type of meaning that we can give to tables is to map their fields to their
+respective columns. This is done by choosing 'Table' as our choice of @f@:
+
+@
+    packageTable :: Package ('Table' "package")
+    packageTable = Package { packageName = "name"
+                           , packageAuthor = "author_id"
+                           , packageMaintainerId = "maintainer_id" }
+
+    userTable :: User ('Table' "user")
+    userTable = User { userId = "id"
+                     , userName = "name"
+                     , userBio = "bio"
+                     }
+@
+
+Now that we have full definitions of our tables, we can perform some @SELECT@s.
+First, let's list all known packages:
+
+@
+    listAllPackages :: 'PG.Connection' -> IO [Package 'Interpret']
+    listAllPackages c = 'select' ('queryTable' packageTable)
+@
+
+This computation now returns us a list of @Package@s where @f@ has been set as
+'Interpret'. The 'Interpret' functor is responsible for defining the mapping
+from PostgreSQL types (such as 'PGText') to Haskell types (such as 'Text').
+
+Another choice of @f@ occurs when we perform a left join. For example, here
+is the /query/ to list all packages with their (optional) maintainers:
+
+@
+    listAllPackagesAndMaintainersQuery :: 'Query' (Package 'Expr', User ('Compose' 'Expr' 'PGNull'))
+    listAllPackagesAndMaintainersQuery =
+      'leftJoin' (\p m -> packageMaintainerId p '==.' userId m)
+               ('queryTable' package)
+               ('queryTable' user))
+@
+
+This query communicates that we will have a collection of 'Expr'essions that
+correspond to columns in the @Package@ table, and also a collection of
+'Expr'essions that are columns in the @User@ table. However, as the user table
+is only present as a left join, all of these columns might be @NULL@ - indicated
+by the composition of 'PGNull' with 'Expr'.
+
+@opaleye-tf@ is smart enough to collapse data together where convenient.
+For example, if we look at just the final types of @userId@ and @userBio@ in the
+context of the left join:
+
+@
+    > :t fmap (\\(_, u) -> userId u) listAllPackagesAndMaintainersQuery
+    Query (Expr (PGNull PGInteger))
+
+    > :t fmap (\\(_, u) -> userBio u) listAllPackagesAndMaintainersQuery
+    Query (Expr (PGNull PGText))
+@
+
+Which are as expected.
+
+Finally, when executing queries that contain left joins, @opaleye-tf@ is able to
+invert the possible @NULLs@ over the whole record:
+
+@
+    > :t \conn -> select conn listAllPackagesAndMaintainersQuery
+    Connection -> IO [(Package Interpret, Maybe (User Interpret))]
+@
+
+Notice that @User (Compose Expr PGNull)@ was mapped to @Maybe (User Interpret)@.
+
+-}
