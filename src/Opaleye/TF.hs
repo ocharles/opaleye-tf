@@ -15,7 +15,7 @@ module Opaleye.TF
          type Col,
 
          -- * Mapping PostgreSQL types
-         PGTypes(..), lit,
+         PGTypes(..), Lit(..),
 
          -- * Defining tables
          Table(..),
@@ -71,11 +71,9 @@ import qualified Opaleye.RunQuery as Op
 import qualified Opaleye.Sql as Op
 import qualified Opaleye.Table as Op hiding (required)
 
--- | This type family is responsible for a lot of magic, and is indispensible.
--- Essentially, the 'Col' type family lets
--- It's basically doing function application at the type level, but with a bit
--- of normalization thrown in.
-
+-- | The workhorse type family in @opaleye-tf@. This type family "collapses"
+-- noisy types down into things that are more meaningful. For example, when
+-- used with 'Interpret' you just get ordinary Haskell values.
 type family Col (f :: a -> b) (x :: a) :: b where
   -- If we use the Interpret functor, then we'll use defunctionalisation to
   -- get down to something in *
@@ -108,7 +106,19 @@ type family Col (f :: a -> b) (x :: a) :: b where
 
 --------------------------------------------------------------------------------
 
--- Table definitions are mostly in the types.
+-- | 'Table' is used to specify the schema definition in PostgreSQL. The type
+-- itself uses a GHC \"symbol\" to specify the table name. This is also an
+-- instance of 'FromString', where the string is taken as the column name.
+--
+-- Example:
+--
+-- @
+-- userTable :: User ('Table' "user")
+-- userTable = User { userId = "id"
+--                  , userName = "name"
+--                  , userBio = "bio"
+--                  }
+-- @
 newtype Table (tableName :: Symbol) (columnType :: k) = Column String
 
 -- This handy instance gives us a bit more sugar when defining a table.
@@ -116,10 +126,12 @@ instance IsString (Table tableName columnType) where fromString = Column
 
 --------------------------------------------------------------------------------
 
--- Just like Opaleye's column, but kind polymorphic.
+-- | A single PostgreSQL expression of a given type.
 data Expr (columnType :: k) = Expr Op.PrimExpr
 
--- queryTable moves from working under Table to working under Expr.
+-- | 'queryTable' moves from 'Table' to 'Expr'. Accessing the fields of your
+-- table record will now give you expressions to view data in the individual
+-- columns.
 queryTable :: forall table tableName. (KnownSymbol tableName, TableLike table tableName)
            => table (Table tableName) -> Op.Query (table Expr)
 queryTable t =
@@ -167,8 +179,8 @@ instance InjPackMap (K1 i (Expr colType)) where
 
 --------------------------------------------------------------------------------
 
--- select moves from Expr to Interpret (or InterpretNull).
-
+-- | 'select' executes a PostgreSQL query as a @SELECT@ statement, returning
+-- data mapped to Haskell values.
 select :: Selectable pg haskell => PG.Connection -> Op.Query pg -> IO [haskell]
 select conn = Op.runQueryExplicit queryRunner conn
 
@@ -272,9 +284,10 @@ instance UnpackspecRel (K1 i (Compose Expr PGNull colType)) where
 -- Polykinded compose. I think transformers might have this now.
 data Compose (f :: l -> *) (g :: k -> l) (a :: k) = Compose (f (g a))
 
--- A left join takes two queries as before and the product of the left query and
--- the right query wrapped as NULL. Crucially we have a functional dependency
--- on 'ToNull' so it infers properly.
+-- | A left join takes two queries and performs a relational @LEFT JOIN@ between
+-- them. The left join has all rows of the left query, joined against zero or
+-- more rows in the right query. If the join matches no rows in the right table,
+-- then all columns will be @null@.
 leftJoin :: (ToNull right nullRight)
          => (left -> right -> Expr PGBoolean)
          -> Op.Query left
@@ -316,8 +329,11 @@ instance (t' ~ Col (Compose Expr PGNull) t, t' ~ Expr x) => GToNull (K1 i (Expr 
 data TyFun :: * -> * -> *
 type family Apply (f :: TyFun k1 k2 -> *) (x :: k1) :: k2
 
--- Define a universe of types in the database.
-
+-- | The universe of types known about by PostgreSQL.
+--
+-- Note that this data type is a little too large, in that it's possible to have
+-- types such as @PGNull (PGNull PGInteger)@ which doesn't make much sense, so
+-- you'll need to be slightly careful!
 data PGTypes
   = PGBigint
   | PGText
@@ -328,13 +344,15 @@ data PGTypes
   | PGInteger
   | PGDefault PGTypes -- ^ Used to indicate that columns may also take an extra value - `DEFAULT`.
 
--- Introduce a defunctionalisation symbol and mapping of database types to
--- Haskell types. Only has to be done once, and I'd include all built in
--- PostgreSQL types.
-
+-- | A defunctionalisation symbol used for mapping of database types to Haskell
+-- types.
 data InterpretPGType :: TyFun PGTypes * -> *
 
+-- | A class witnessing the relationship between PostgreSQL types and their
+-- Haskell representations.
 class (haskell ~ Apply InterpretPGType pg) => Lit pg haskell | haskell -> pg, pg -> haskell where
+  -- | Given a Haskell value, build an 'Expr' that represents this value as a
+  -- PostgreSQL literal.
   lit :: haskell -> Expr pg
 
 type instance Apply InterpretPGType 'PGBigint = Int64
@@ -376,9 +394,11 @@ data Interpret :: k -> * where
 
 --------------------------------------------------------------------------------
 
+-- | Apply a @WHERE@ restriction to a table.
 restrict :: Op.QueryArr (Expr PGBoolean) ()
 restrict = lmap (\(Expr prim) -> Op.Column prim) Op.restrict
 
+-- | The PostgreSQL @=@ operator.
 (==.) :: Expr a -> Expr a -> Expr PGBoolean
 Expr a ==. Expr b =
   case Op.Column a Op..== Op.Column b of
@@ -388,9 +408,14 @@ infix 4 ==.
 
 --------------------------------------------------------------------------------
 
+-- | 'Insertion' witnesses that a table is being @INSERT@ed. This adds special
+-- meaning to 'PGDefault''.
 data Insertion :: k -> * where
 
-data Default a = Default | ProvideValue a
+-- | 'Default' is like 'Maybe', but only has meaning in @INSERT@ statements.
+data Default a
+  = Default -- ^ Use the @DEFAULT@ value for this column.
+  | ProvideValue a -- ^ Override the default value by providing an explicit value.
 
 class Insertable table row | table -> row where
   insertTable :: table -> Op.Table row ()
@@ -431,6 +456,8 @@ instance GWriter (K1 i (Table tableName t)) (K1 i (Expr t)) where
           (const ())
           (Op.required columnName)
 
+-- | Given a 'Table' and a collection of rows for that table, @INSERT@ this data
+-- into PostgreSQL. The rows are specified as PostgreSQL expressions.
 insert
   :: Insertable table row
   => PG.Connection -> table -> [row] -> IO Int64
@@ -457,17 +484,17 @@ To take an example, let's consider a simple schema for Hackage - the repository
 of Haskell libraries.
 
 @
-    data Package f =
-      Package { packageName :: 'Col' f 'PGText'
-              , packageAuthor :: Col f \''PGInteger'
-              , packageMaintainerId :: Col f (\''PGNull' \''PGInteger')
-              }
+data Package f =
+  Package { packageName :: 'Col' f 'PGText'
+          , packageAuthor :: Col f \''PGInteger'
+          , packageMaintainerId :: Col f (\''PGNull' \''PGInteger')
+          }
 
-    data User f =
-      User { userId :: 'Col' f \''PGInteger'
-           , userName :: 'Col' f \''PGText'
-           , userBio :: 'Col' f (\''PGNull' 'PGText')
-           }
+data User f =
+  User { userId :: 'Col' f \''PGInteger'
+       , userName :: 'Col' f \''PGText'
+       , userBio :: 'Col' f (\''PGNull' 'PGText')
+       }
 @
 
 In this example, each record (@Package@ and @User@) correspond to tables in a
@@ -480,24 +507,24 @@ One type of meaning that we can give to tables is to map their fields to their
 respective columns. This is done by choosing 'Table' as our choice of @f@:
 
 @
-    packageTable :: Package ('Table' "package")
-    packageTable = Package { packageName = "name"
-                           , packageAuthor = "author_id"
-                           , packageMaintainerId = "maintainer_id" }
+packageTable :: Package ('Table' "package")
+packageTable = Package { packageName = "name"
+                       , packageAuthor = "author_id"
+                       , packageMaintainerId = "maintainer_id" }
 
-    userTable :: User ('Table' "user")
-    userTable = User { userId = "id"
-                     , userName = "name"
-                     , userBio = "bio"
-                     }
+userTable :: User ('Table' "user")
+userTable = User { userId = "id"
+                 , userName = "name"
+                 , userBio = "bio"
+                 }
 @
 
 Now that we have full definitions of our tables, we can perform some @SELECT@s.
 First, let's list all known packages:
 
 @
-    listAllPackages :: 'PG.Connection' -> IO [Package 'Interpret']
-    listAllPackages c = 'select' ('queryTable' packageTable)
+listAllPackages :: 'PG.Connection' -> IO [Package 'Interpret']
+listAllPackages c = 'select' ('queryTable' packageTable)
 @
 
 This computation now returns us a list of @Package@s where @f@ has been set as
@@ -508,11 +535,11 @@ Another choice of @f@ occurs when we perform a left join. For example, here
 is the /query/ to list all packages with their (optional) maintainers:
 
 @
-    listAllPackagesAndMaintainersQuery :: 'Query' (Package 'Expr', User ('Compose' 'Expr' 'PGNull'))
-    listAllPackagesAndMaintainersQuery =
-      'leftJoin' (\p m -> packageMaintainerId p '==.' userId m)
-               ('queryTable' package)
-               ('queryTable' user))
+listAllPackagesAndMaintainersQuery :: 'Query' (Package 'Expr', User ('Compose' 'Expr' 'PGNull'))
+listAllPackagesAndMaintainersQuery =
+  'leftJoin' (\p m -> packageMaintainerId p '==.' userId m)
+           ('queryTable' package)
+           ('queryTable' user))
 @
 
 This query communicates that we will have a collection of 'Expr'essions that
@@ -526,11 +553,11 @@ For example, if we look at just the final types of @userId@ and @userBio@ in the
 context of the left join:
 
 @
-    > :t fmap (\\(_, u) -> userId u) listAllPackagesAndMaintainersQuery
-    Query (Expr (PGNull PGInteger))
+> :t fmap (\\(_, u) -> userId u) listAllPackagesAndMaintainersQuery
+Query (Expr (PGNull PGInteger))
 
-    > :t fmap (\\(_, u) -> userBio u) listAllPackagesAndMaintainersQuery
-    Query (Expr (PGNull PGText))
+> :t fmap (\\(_, u) -> userBio u) listAllPackagesAndMaintainersQuery
+Query (Expr (PGNull PGText))
 @
 
 Which are as expected.
@@ -539,8 +566,8 @@ Finally, when executing queries that contain left joins, @opaleye-tf@ is able to
 invert the possible @NULLs@ over the whole record:
 
 @
-    > :t \conn -> select conn listAllPackagesAndMaintainersQuery
-    Connection -> IO [(Package Interpret, Maybe (User Interpret))]
+> :t \conn -> select conn listAllPackagesAndMaintainersQuery
+Connection -> IO [(Package Interpret, Maybe (User Interpret))]
 @
 
 Notice that @User (Compose Expr PGNull)@ was mapped to @Maybe (User Interpret)@.
