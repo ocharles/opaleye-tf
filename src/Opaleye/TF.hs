@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -15,7 +16,7 @@ module Opaleye.TF
          type Col,
 
          -- * Mapping PostgreSQL types
-         PGTypes(..), Lit(..),
+         PGType(..), Lit(..), null, nullable,
 
          -- * Defining tables
          Table(..),
@@ -27,82 +28,46 @@ module Opaleye.TF
          insert, Insertion, Default(..),
 
          -- * Implementation details
-         Compose(..), InterpretPGType, InterpretNull, Interpret)
+         Compose(..), Interpretation, InterpretPGType, Interpret)
        where
 
+import Prelude hiding (null)
+import Opaleye.TF.Insert
+import Opaleye.TF.Default
+import Opaleye.TF.Expr
+import Opaleye.TF.Interpretation
+import Opaleye.TF.Machinery
+import Opaleye.TF.Lit
+import Opaleye.TF.BaseTypes
+import Opaleye.TF.Col
+import Opaleye.TF.Nullable
+
 import Control.Applicative
-import Control.Arrow
 import Control.Monad (void)
-import Control.Monad.Trans.State.Strict
-       (State, get, modify, state, execState, runState)
 import Data.Int
 import Data.Profunctor
 import Data.Profunctor.Product ((***!))
 import Data.Proxy (Proxy(..))
 import Data.String (IsString(..))
-import Data.Text (Text)
-import Data.Time
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.FromField as PG
 import qualified Database.PostgreSQL.Simple.FromRow as PG
 import GHC.Generics
 import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
-import qualified Opaleye.Column as Op
-import qualified Opaleye.Internal.Aggregate as Op
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
-import qualified Opaleye.Internal.Optimize as Op
 import qualified Opaleye.Internal.PackMap as Op
-import qualified Opaleye.Internal.PrimQuery as Op hiding (restrict)
-import qualified Opaleye.Internal.Print as Op
 import qualified Opaleye.Internal.RunQuery as Op
-import qualified Opaleye.Internal.Sql as Sql
 import qualified Opaleye.Internal.Table as Op
 import qualified Opaleye.Internal.TableMaker as Op
-import qualified Opaleye.Internal.Tag as Op
 import qualified Opaleye.Internal.Unpackspec as Op
 import qualified Opaleye.Join as Op
 import qualified Opaleye.Manipulation as Op
 import qualified Opaleye.Operators as Op
-import qualified Opaleye.PGTypes as Op
 import qualified Opaleye.QueryArr as Op
 import qualified Opaleye.RunQuery as Op
-import qualified Opaleye.Sql as Op
 import qualified Opaleye.Table as Op hiding (required)
-
--- | The workhorse type family in @opaleye-tf@. This type family "collapses"
--- noisy types down into things that are more meaningful. For example, when
--- used with 'Interpret' you just get ordinary Haskell values.
-type family Col (f :: a -> b) (x :: a) :: b where
-  -- If we use the Interpret functor, then we'll use defunctionalisation to
-  -- get down to something in *
-  Col Interpret x = Apply InterpretPGType x
-
-  -- The Insertion functor is like Interpret, in that it maps to ordinary
-  -- Haskell types. However, it also maps PGDefault to a special Maybe-like
-  -- type to allow the use of 'DEFAULT'.
-  Col Insertion (PGDefault t) = Default (Expr t)
-  Col Insertion x = Expr x
-
-  -- InterpretNull is used for left joins.
-  -- If we use InterpretNull with PGNull, then we get a Maybe of whatever t
-  -- is. This avoids a double Maybe.
-  Col (Compose Interpret PGNull) (PGNull t) = Maybe (Apply InterpretPGType t)
-
-  -- Otherwise, we still get a Maybe of whatever the underlying type is.
-  Col (Compose Interpret PGNull) x = Maybe (Col Interpret x)
-
-  -- In the process of a left join, we work under Compose Expr PGNull.
-  -- This basically does the same as InterpretNull PGNull - collapsing
-  -- multiple PGNull layers together.
-  Col (Compose Expr PGNull) (PGNull t) = Col (Compose Expr PGNull) t
-
-  -- If the given column isn't nullable, make it nullable.
-  Col (Compose Expr PGNull) t = Col Expr (PGNull t)
-
- -- If I don't know what f is, then just give me f x.
-  Col f x = f x
 
 --------------------------------------------------------------------------------
 
@@ -119,15 +84,14 @@ type family Col (f :: a -> b) (x :: a) :: b where
 --                  , userBio = "bio"
 --                  }
 -- @
-newtype Table (tableName :: Symbol) (columnType :: k) = Column String
+newtype Table (tableName :: Symbol) (columnType :: k) =
+  Column String
+  deriving (Show)
 
 -- This handy instance gives us a bit more sugar when defining a table.
 instance IsString (Table tableName columnType) where fromString = Column
 
 --------------------------------------------------------------------------------
-
--- | A single PostgreSQL expression of a given type.
-data Expr (columnType :: k) = Expr Op.PrimExpr
 
 -- | 'queryTable' moves from 'Table' to 'Expr'. Accessing the fields of your
 -- table record will now give you expressions to view data in the individual
@@ -147,10 +111,10 @@ queryTable t =
                (\inj columns ->
                   fmap to (injPackMap inj columns)))
 
--- This should probably be a type class so I don't force generics on people.
+-- TODO This should probably be a type class so I don't force generics on people.
 type TableLike t tableName = (Generic (t Expr),Generic (t (Table tableName)), InjPackMap (Rep (t Expr)), ColumnView (Rep (t (Table tableName))) (Rep (t Expr)))
 
--- A type class to get the column names out of the record.
+-- | A type class to get the column names out of the record.
 class ColumnView f g where
   columnViewRep :: f x -> g x
 
@@ -194,15 +158,15 @@ instance (Generic (rel Expr),ParseRelRep (Rep (rel Expr)) (Rep (rel Interpret)),
   queryRunner = gqueryRunner
 
 -- The same instance but for left joins.
-instance (Generic (rel (Compose Expr PGNull)),ParseRelRep (Rep (rel (Compose Expr PGNull))) (Rep (rel (Compose Interpret PGNull))),Generic (rel (Compose Interpret PGNull)),UnpackspecRel (Rep (rel (Compose Expr PGNull))), Generic (rel Interpret), DistributeMaybe (rel (Compose Interpret PGNull)) (rel Interpret), HasFields (Rep (rel (Compose Expr PGNull)))) =>
-           Selectable (rel (Compose Expr PGNull)) (Maybe (rel Interpret)) where
-  queryRunner = fmap distributeMaybe (gqueryRunner :: Op.QueryRunner (rel (Compose Expr PGNull)) (rel (Compose Interpret PGNull)))
+instance (Generic (rel (Compose Expr 'Nullable)),ParseRelRep (Rep (rel (Compose Expr 'Nullable))) (Rep (rel (Compose Interpret 'Nullable))),Generic (rel (Compose Interpret 'Nullable)),UnpackspecRel (Rep (rel (Compose Expr 'Nullable))), Generic (rel Interpret), DistributeMaybe (rel (Compose Interpret 'Nullable)) (rel Interpret), HasFields (Rep (rel (Compose Expr 'Nullable)))) =>
+           Selectable (rel (Compose Expr 'Nullable)) (Maybe (rel Interpret)) where
+  queryRunner = fmap distributeMaybe (gqueryRunner :: Op.QueryRunner (rel (Compose Expr 'Nullable)) (rel (Compose Interpret 'Nullable)))
 
 -- This lets us turn a record of Maybe's into a Maybe of fields.
 class DistributeMaybe x y | x -> y where
   distributeMaybe :: x -> Maybe y
 
-instance (Generic (rel (Compose Interpret PGNull)), Generic (rel Interpret), GDistributeMaybe (Rep (rel (Compose Interpret PGNull))) (Rep (rel Interpret))) => DistributeMaybe (rel (Compose Interpret PGNull)) (rel Interpret) where
+instance (Generic (rel (Compose Interpret 'Nullable)), Generic (rel Interpret), GDistributeMaybe (Rep (rel (Compose Interpret 'Nullable))) (Rep (rel Interpret))) => DistributeMaybe (rel (Compose Interpret 'Nullable)) (rel Interpret) where
   distributeMaybe = fmap to . gdistributeMaybe . from
 
 class GDistributeMaybe x y where
@@ -276,20 +240,14 @@ instance (UnpackspecRel a, UnpackspecRel b) => UnpackspecRel (a :*: b) where
 instance UnpackspecRel (K1 i (Expr colType)) where
   unpackRel inj (K1 (Expr prim)) = void (inj prim)
 
-instance UnpackspecRel (K1 i (Compose Expr PGNull colType)) where
-  unpackRel inj (K1 (Compose (Expr prim))) = void (inj prim)
-
 --------------------------------------------------------------------------------
-
--- Polykinded compose. I think transformers might have this now.
-data Compose (f :: l -> *) (g :: k -> l) (a :: k) = Compose (f (g a))
 
 -- | A left join takes two queries and performs a relational @LEFT JOIN@ between
 -- them. The left join has all rows of the left query, joined against zero or
 -- more rows in the right query. If the join matches no rows in the right table,
 -- then all columns will be @null@.
 leftJoin :: (ToNull right nullRight)
-         => (left -> right -> Expr PGBoolean)
+         => (left -> right -> Expr 'PGBoolean)
          -> Op.Query left
          -> Op.Query right
          -> Op.Query (left,nullRight)
@@ -307,8 +265,7 @@ leftJoin f l r =
 class ToNull expr exprNull | expr -> exprNull where
   toNull :: expr -> exprNull
 
--- A single table can be transformed generically.
-instance (GToNull (Rep (rel Expr)) (Rep (rel (Compose Expr PGNull))), Generic (rel Expr), Generic (rel (Compose Expr PGNull))) => ToNull (rel Expr) (rel (Compose Expr PGNull)) where
+instance (GToNull (Rep (rel Expr)) (Rep (rel (Compose Expr 'Nullable))), Generic (rel Expr), Generic (rel (Compose Expr 'Nullable))) => ToNull (rel Expr) (rel (Compose Expr 'Nullable)) where
   toNull = to . gtoNull . from
 
 class GToNull f g | f -> g where
@@ -320,86 +277,17 @@ instance GToNull f f' => GToNull (M1 i c f) (M1 i c f') where
 instance (GToNull f f', GToNull g g') => GToNull (f :*: g) (f' :*: g') where
   gtoNull (f :*: g) = gtoNull f :*: gtoNull g
 
-instance (t' ~ Col (Compose Expr PGNull) t, t' ~ Expr x) => GToNull (K1 i (Expr t)) (K1 i t') where
+instance (t' ~ Col (Compose Expr 'Nullable) t, t' ~ Expr x) => GToNull (K1 i (Expr t)) (K1 i t') where
   gtoNull (K1 (Expr prim)) = K1 (Expr prim)
 
 --------------------------------------------------------------------------------
 
--- We'll need defunctionalisation, so set the scene for that..
-data TyFun :: * -> * -> *
-type family Apply (f :: TyFun k1 k2 -> *) (x :: k1) :: k2
-
--- | The universe of types known about by PostgreSQL.
---
--- Note that this data type is a little too large, in that it's possible to have
--- types such as @PGNull (PGNull PGInteger)@ which doesn't make much sense, so
--- you'll need to be slightly careful!
-data PGTypes
-  = PGBigint
-  | PGText
-  | PGBoolean
-  | PGNull PGTypes
-  | PGReal
-  | PGTimestampWithoutTimeZone
-  | PGInteger
-  | PGDefault PGTypes -- ^ Used to indicate that columns may also take an extra value - `DEFAULT`.
-
--- | A defunctionalisation symbol used for mapping of database types to Haskell
--- types.
-data InterpretPGType :: TyFun PGTypes * -> *
-
--- | A class witnessing the relationship between PostgreSQL types and their
--- Haskell representations.
-class (haskell ~ Apply InterpretPGType pg) => Lit pg haskell | haskell -> pg, pg -> haskell where
-  -- | Given a Haskell value, build an 'Expr' that represents this value as a
-  -- PostgreSQL literal.
-  lit :: haskell -> Expr pg
-
-type instance Apply InterpretPGType 'PGBigint = Int64
-instance Lit 'PGBigint Int64 where
-  lit = Expr . Op.unColumn . Op.pgInt8
-
-type instance Apply InterpretPGType 'PGBoolean = Bool
-instance Lit 'PGBoolean Bool where
-  lit = Expr . Op.unColumn . Op.pgBool
-
-type instance Apply InterpretPGType 'PGInteger = Int32
-instance Lit 'PGInteger Int32 where
-  lit = Expr . Op.unColumn . Op.pgInt4 . fromIntegral
-
-type instance Apply InterpretPGType 'PGReal = Float
-instance Lit 'PGReal Float where
-  lit = Expr . Op.unColumn . Op.pgDouble . realToFrac
-
-type instance Apply InterpretPGType 'PGText = Text
-instance Lit 'PGText Text where
-  lit = Expr . Op.unColumn . Op.pgStrictText
-
-type instance Apply InterpretPGType 'PGTimestampWithoutTimeZone = LocalTime
-instance Lit 'PGTimestampWithoutTimeZone LocalTime where
-  lit = Expr . Op.unColumn . Op.pgLocalTime
-
-type instance Apply InterpretPGType (PGNull t) = Maybe (Apply InterpretPGType t)
-instance Lit t t' => Lit ('PGNull t) (Maybe t') where
-  lit Nothing = Expr (Op.unColumn Op.null)
-  lit (Just x) = case lit x of Expr a -> Expr a
-
-type instance Apply InterpretPGType (PGDefault t) = Apply InterpretPGType t
-
--- Two functors to move from Expr (or Compose Expr PGNull) to. Store no data,
--- just used to drive the Col type family.
-
-data InterpretNull :: k -> * where
-data Interpret :: k -> * where
-
---------------------------------------------------------------------------------
-
 -- | Apply a @WHERE@ restriction to a table.
-restrict :: Op.QueryArr (Expr PGBoolean) ()
+restrict :: Op.QueryArr (Expr 'PGBoolean) ()
 restrict = lmap (\(Expr prim) -> Op.Column prim) Op.restrict
 
 -- | The PostgreSQL @=@ operator.
-(==.) :: Expr a -> Expr a -> Expr PGBoolean
+(==.) :: Expr a -> Expr a -> Expr 'PGBoolean
 Expr a ==. Expr b =
   case Op.Column a Op..== Op.Column b of
     Op.Column c -> Expr c
@@ -407,15 +295,6 @@ Expr a ==. Expr b =
 infix 4 ==.
 
 --------------------------------------------------------------------------------
-
--- | 'Insertion' witnesses that a table is being @INSERT@ed. This adds special
--- meaning to 'PGDefault''.
-data Insertion :: k -> * where
-
--- | 'Default' is like 'Maybe', but only has meaning in @INSERT@ statements.
-data Default a
-  = Default -- ^ Use the @DEFAULT@ value for this column.
-  | ProvideValue a -- ^ Override the default value by providing an explicit value.
 
 class Insertable table row | table -> row where
   insertTable :: table -> Op.Table row ()
@@ -432,7 +311,7 @@ class GWriter f g where
 
 instance GWriter f f' => GWriter (M1 i c f) (M1 i c f') where
   gwriter (M1 a) =
-    lmap (\(M1 a) -> a)
+    lmap (\(M1 x) -> x)
          (gwriter a)
 
 instance (GWriter f f',GWriter g g') => GWriter (f :*: g) (f' :*: g') where
@@ -441,12 +320,18 @@ instance (GWriter f f',GWriter g g') => GWriter (f :*: g) (f' :*: g') where
           fst
           (gwriter l ***! gwriter r)
 
-instance GWriter (K1 i (Table tableName (PGDefault t))) (K1 i (Default (Expr t))) where
+instance GWriter (K1 i (Table tableName ('HasDefault t))) (K1 i (Default (Expr t))) where
   gwriter (K1 (Column columnName)) =
     dimap (\(K1 def) ->
              case def of
-               Default -> Op.Column (Op.DefaultInsertExpr)
+               InsertDefault -> Op.Column (Op.DefaultInsertExpr)
                ProvideValue (Expr a) -> Op.Column a)
+          (const ())
+          (Op.required columnName)
+
+instance GWriter (K1 i (Table tableName ('NotNullable t))) (K1 i (Expr t)) where
+  gwriter (K1 (Column columnName)) =
+    dimap (\(K1 (Expr e)) -> Op.Column e)
           (const ())
           (Op.required columnName)
 
