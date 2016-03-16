@@ -9,4 +9,5 @@ import Opaleye.TF.Machinery
 
 data Interpret (col :: t)
 
-type family Interpretation (col :: t) :: (TyFun t * -> *)
+type family HaskellTyfun (col :: t) :: (TyFun t * -> *)
+type family HaskellNullableTyfun (col :: t) :: (TyFun t * -> *)

@@ -17,13 +17,13 @@ data PGNull t
   = NotNullable t
   | Nullable t
 
--- | Given a way to interpret the underlying column type to a Haskell type,
--- we can interpret a 'PGDefault' type into a Haskell type.
+-- -- -- | Given a way to interpret the underlying column type to a Haskell type,
+-- -- -- we can interpret a 'PGDefault' type into a Haskell type.
 data InterpretNullable (f :: TyFun (PGNull t) *)
-type instance Interpretation (t :: PGNull k) = InterpretNullable
+type instance HaskellTyfun (t :: PGNull k) = InterpretNullable
 
-type instance Apply InterpretNullable ('NotNullable t) = Apply (Interpretation t) t
-type instance Apply InterpretNullable ('Nullable t) = Maybe (Apply (Interpretation t) t)
+type instance Apply InterpretNullable ('NotNullable t) = Apply (HaskellTyfun t) t
+type instance Apply InterpretNullable ('Nullable t) = Maybe (Apply (HaskellTyfun t) t)
 
 data Null a = Null | NotNull a
 

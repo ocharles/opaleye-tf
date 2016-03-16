@@ -19,7 +19,7 @@ module Opaleye.TF
          PGType(..), Lit(..), null, nullable,
 
          -- * Defining tables
-         Table(..),
+         --Table(..),
 
          -- * Querying tables
          queryTable, Expr, select, leftJoin, restrict, (==.),
@@ -28,32 +28,20 @@ module Opaleye.TF
          insert, Insertion, Default(..),
 
          -- * Implementation details
-         Compose(..), Interpretation, InterpretPGType, Interpret)
+         Compose(..), HaskellTyfun, InterpretPGType, Interpret)
        where
 
-import Prelude hiding (null)
-import Opaleye.TF.Insert
-import Opaleye.TF.Default
-import Opaleye.TF.Expr
-import Opaleye.TF.Interpretation
-import Opaleye.TF.Machinery
-import Opaleye.TF.Lit
-import Opaleye.TF.BaseTypes
-import Opaleye.TF.Col
-import Opaleye.TF.Nullable
-
+import GHC.TypeLits
 import Control.Applicative
 import Control.Monad (void)
 import Data.Int
 import Data.Profunctor
 import Data.Profunctor.Product ((***!))
 import Data.Proxy (Proxy(..))
-import Data.String (IsString(..))
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.FromField as PG
 import qualified Database.PostgreSQL.Simple.FromRow as PG
 import GHC.Generics
-import GHC.TypeLits (Symbol, KnownSymbol, symbolVal)
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
@@ -67,65 +55,59 @@ import qualified Opaleye.Manipulation as Op
 import qualified Opaleye.Operators as Op
 import qualified Opaleye.QueryArr as Op
 import qualified Opaleye.RunQuery as Op
+import Opaleye.TF.BaseTypes
+import Opaleye.TF.Col
+import Opaleye.TF.Default
+import Opaleye.TF.Expr
+import Opaleye.TF.Insert
+import Opaleye.TF.Interpretation
+import Opaleye.TF.Lit
+import Opaleye.TF.Machinery
+import Opaleye.TF.Nullable
+import Opaleye.TF.Table
 import qualified Opaleye.Table as Op hiding (required)
+import Prelude hiding (null)
 
 --------------------------------------------------------------------------------
 
--- | 'Table' is used to specify the schema definition in PostgreSQL. The type
--- itself uses a GHC \"symbol\" to specify the table name. This is also an
--- instance of 'FromString', where the string is taken as the column name.
---
--- Example:
---
--- @
--- userTable :: User ('Table' "user")
--- userTable = User { userId = "id"
---                  , userName = "name"
---                  , userBio = "bio"
---                  }
--- @
-newtype Table (tableName :: Symbol) (columnType :: k) =
-  Column String
-  deriving (Show)
+data T f =
+  T {tA :: Col f ('Column "a" ('NoDefault 'PGInteger))
+    ,tB :: Col f ('Column "b" ('HasDefault 'PGBoolean))}
+  deriving ((Generic))
 
--- This handy instance gives us a bit more sugar when defining a table.
-instance IsString (Table tableName columnType) where fromString = Column
+type instance TableName T = "t"
 
 --------------------------------------------------------------------------------
 
 -- | 'queryTable' moves from 'Table' to 'Expr'. Accessing the fields of your
 -- table record will now give you expressions to view data in the individual
 -- columns.
-queryTable :: forall table tableName. (KnownSymbol tableName, TableLike table tableName)
-           => table (Table tableName) -> Op.Query (table Expr)
-queryTable t =
+queryTable :: forall (rel :: (k -> *) -> *).
+              (Generic (rel ExtractSchema),Generic (rel Expr), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+           => Op.Query (rel Expr)
+queryTable =
   Op.queryTableExplicit
     columnMaker
-    (Op.Table (symbolVal (Proxy :: Proxy tableName))
+    (Op.Table (symbolVal (Proxy :: Proxy (TableName rel)))
               (Op.TableProperties undefined
                                   (Op.View columnView)))
-  where columnView = columnViewRep (from t)
+  where columnView = columnViewRep (Proxy :: Proxy (Rep (rel ExtractSchema)))
         columnMaker =
           Op.ColumnMaker
-            (Op.PackMap
-               (\inj columns ->
-                  fmap to (injPackMap inj columns)))
-
--- TODO This should probably be a type class so I don't force generics on people.
-type TableLike t tableName = (Generic (t Expr),Generic (t (Table tableName)), InjPackMap (Rep (t Expr)), ColumnView (Rep (t (Table tableName))) (Rep (t Expr)))
+            (Op.PackMap (\inj columns -> fmap to (injPackMap inj columns)))
 
 -- | A type class to get the column names out of the record.
 class ColumnView f g where
-  columnViewRep :: f x -> g x
+  columnViewRep :: proxy f -> g x
 
 instance ColumnView f f' => ColumnView (M1 i c f) (M1 i c f') where
-  columnViewRep (M1 f) = M1 (columnViewRep f)
+  columnViewRep _ = M1 (columnViewRep (Proxy :: Proxy f))
 
 instance (ColumnView f f', ColumnView g g') => ColumnView (f :*: g) (f' :*: g') where
-  columnViewRep (f :*: g) = columnViewRep f :*: columnViewRep g
+  columnViewRep _ = columnViewRep (Proxy :: Proxy f) :*: columnViewRep (Proxy :: Proxy g)
 
-instance ColumnView (K1 i (Table tableName colType)) (K1 i (Expr colType)) where
-  columnViewRep (K1 (Column name)) = K1 (Expr (Op.BaseTableAttrExpr name))
+instance KnownSymbol columnName => ColumnView (K1 i (Proxy columnName)) (K1 i (Expr colType)) where
+  columnViewRep _ = K1 (Expr (Op.BaseTableAttrExpr (symbolVal (Proxy :: Proxy columnName))))
 
 -- A type to generate that weird PackMap thing queryTableExplicit wants.
 -- Basically associating column symbol names with the given record.
@@ -296,59 +278,53 @@ infix 4 ==.
 
 --------------------------------------------------------------------------------
 
-class Insertable table row | table -> row where
-  insertTable :: table -> Op.Table row ()
+class Insertable row where
+  insertTable :: f row -> Op.Table row ()
 
-instance (KnownSymbol tableName,Generic (rel Insertion),Generic (rel (Table tableName)),GWriter (Rep (rel (Table tableName))) (Rep (rel Insertion))) => Insertable (rel (Table tableName)) (rel Insertion) where
-  insertTable table =
-    Op.Table (symbolVal (Proxy :: Proxy tableName))
+instance (KnownSymbol (TableName rel),Generic (rel Insertion),GWriter (Rep (rel ExtractSchema)) (Rep (rel Insertion))) => Insertable (rel Insertion) where
+  insertTable _ =
+    Op.Table (symbolVal (Proxy :: Proxy (TableName rel)))
              (lmap from
-                   (Op.TableProperties (gwriter (from table))
+                   (Op.TableProperties (gwriter (Proxy :: Proxy (Rep (rel ExtractSchema))))
                                        undefined))
 
 class GWriter f g where
-  gwriter :: f x -> Op.Writer (g x) ()
+  gwriter :: proxy f -> Op.Writer (g x) ()
 
 instance GWriter f f' => GWriter (M1 i c f) (M1 i c f') where
-  gwriter (M1 a) =
+  gwriter _ =
     lmap (\(M1 x) -> x)
-         (gwriter a)
+         (gwriter (Proxy :: Proxy f))
 
 instance (GWriter f f',GWriter g g') => GWriter (f :*: g) (f' :*: g') where
-  gwriter (l :*: r) =
+  gwriter _ =
     dimap (\(l' :*: r') -> (l',r'))
           fst
-          (gwriter l ***! gwriter r)
+          (gwriter (Proxy :: Proxy f) ***! gwriter (Proxy :: Proxy g))
 
-instance GWriter (K1 i (Table tableName ('HasDefault t))) (K1 i (Default (Expr t))) where
-  gwriter (K1 (Column columnName)) =
+instance KnownSymbol columnName => GWriter (K1 i (Proxy columnName)) (K1 i (Default (Expr t))) where
+  gwriter _ =
     dimap (\(K1 def) ->
              case def of
                InsertDefault -> Op.Column (Op.DefaultInsertExpr)
                ProvideValue (Expr a) -> Op.Column a)
           (const ())
-          (Op.required columnName)
+          (Op.required (symbolVal (Proxy :: Proxy columnName)))
 
-instance GWriter (K1 i (Table tableName ('NotNullable t))) (K1 i (Expr t)) where
-  gwriter (K1 (Column columnName)) =
+instance KnownSymbol columnName => GWriter (K1 i (Proxy columnName)) (K1 i (Expr t)) where
+  gwriter _ =
     dimap (\(K1 (Expr e)) -> Op.Column e)
           (const ())
-          (Op.required columnName)
-
-instance GWriter (K1 i (Table tableName t)) (K1 i (Expr t)) where
-  gwriter (K1 (Column columnName)) =
-    dimap (\(K1 (Expr e)) -> Op.Column e)
-          (const ())
-          (Op.required columnName)
+          (Op.required (symbolVal (Proxy :: Proxy columnName)))
 
 -- | Given a 'Table' and a collection of rows for that table, @INSERT@ this data
 -- into PostgreSQL. The rows are specified as PostgreSQL expressions.
 insert
-  :: Insertable table row
-  => PG.Connection -> table -> [row] -> IO Int64
-insert conn table rows =
+  :: Insertable (rel Insertion)
+  => PG.Connection -> [rel Insertion] -> IO Int64
+insert conn rows =
   Op.runInsertMany conn
-                   (insertTable table)
+                   (insertTable rows)
                    rows
 
 {- $intro

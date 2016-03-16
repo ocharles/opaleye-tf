@@ -1,3 +1,4 @@
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
@@ -6,6 +7,7 @@
 
 module Opaleye.TF.BaseTypes where
 
+import Opaleye.TF.Insert
 import Data.Int (Int32, Int64)
 import Data.Text
 import Data.Time (LocalTime)
@@ -66,7 +68,7 @@ data PGType
   | PGXML                    -- ^ @xml@
 
 data InterpretPGType (fun :: TyFun PGType *)
-type instance Interpretation (a :: PGType) = InterpretPGType
+type instance HaskellTyfun (a :: PGType) = InterpretPGType
 
 type instance Apply InterpretPGType 'PGBigint = Int64
 instance Lit 'PGBigint Int64 where
@@ -91,3 +93,14 @@ instance Lit 'PGText Text where
 type instance Apply InterpretPGType ('PGTimestamp 'WithoutTimeZone) = LocalTime
 instance Lit ('PGTimestamp 'WithoutTimeZone) LocalTime where
   lit = Expr . Op.unColumn . Op.pgLocalTime
+
+--------------------------------------------------------------------------------
+data ExprType (f :: TyFun PGType *)
+
+type instance ExprTyfun (t :: PGType) = ExprType
+type instance Apply ExprType (t :: PGType) = Expr t
+
+--------------------------------------------------------------------------------
+data InsertionType (f :: TyFun PGType *)
+type instance InsertionTyfun (t :: PGType) = InsertionType
+type instance Apply InsertionType (t :: PGType) = Expr t
