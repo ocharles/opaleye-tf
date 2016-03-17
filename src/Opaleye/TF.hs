@@ -19,13 +19,16 @@ module Opaleye.TF
          PGType(..), Lit(..), null, nullable,
 
          -- * Defining tables
-         ExtractSchema, TableName,
+         ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
          queryTable, Expr, select, leftJoin, restrict, (==.),
 
          -- * Inserting data
          insert, Insertion, Default(..),
+
+         -- * TODO Organize
+         Op.Query,
 
          -- * Implementation details
          Compose(..), Interpret)
