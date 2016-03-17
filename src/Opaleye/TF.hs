@@ -22,7 +22,7 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, Expr, select, leftJoin, restrict, (==.),
+         queryTable, Expr, select, leftJoin, restrict, (==.), (||.), ilike,
 
          -- * Inserting data
          insert, Insertion, Default(..),
@@ -277,7 +277,20 @@ Expr a ==. Expr b =
   case Op.Column a Op..== Op.Column b of
     Op.Column c -> Expr c
 
+-- | The PostgreSQL @OR@ operator.
+(||.) :: Expr a -> Expr a -> Expr 'PGBoolean
+Expr a ||. Expr b =
+  case Op.Column a Op..|| Op.Column b of
+    Op.Column c -> Expr c
+
+-- | The PostgreSQL @ILIKE@ operator.
+ilike :: Expr 'PGText -> Expr 'PGText -> Expr 'PGBoolean
+Expr a `ilike` Expr b =
+  case Op.binOp (Op.OpOther "ILIKE") (Op.Column a) (Op.Column b) of
+    Op.Column c -> Expr c
+
 infix 4 ==.
+infixr 2 ||.
 
 --------------------------------------------------------------------------------
 
