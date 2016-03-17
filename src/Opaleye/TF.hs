@@ -19,7 +19,7 @@ module Opaleye.TF
          PGType(..), Lit(..), null, nullable,
 
          -- * Defining tables
-         --Table(..),
+         ExtractSchema, TableName,
 
          -- * Querying tables
          queryTable, Expr, select, leftJoin, restrict, (==.),
@@ -28,7 +28,7 @@ module Opaleye.TF
          insert, Insertion, Default(..),
 
          -- * Implementation details
-         Compose(..), HaskellTyfun, InterpretPGType, Interpret)
+         Compose(..), Interpret)
        where
 
 import GHC.TypeLits

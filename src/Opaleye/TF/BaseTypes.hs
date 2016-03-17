@@ -7,17 +7,17 @@
 
 module Opaleye.TF.BaseTypes where
 
-import Opaleye.TF.Insert
 import Data.Int (Int32, Int64)
 import Data.Text
 import Data.Time (LocalTime)
 import GHC.TypeLits (Nat)
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.PGTypes as Op
-import Opaleye.TF.Interpretation
+import Opaleye.TF.Col
 import Opaleye.TF.Expr
+import Opaleye.TF.Interpretation
 import Opaleye.TF.Lit
-import Opaleye.TF.Machinery (Apply, TyFun)
+import Opaleye.TF.Nullable
 
 data WithTimeZone
   = WithTimeZone
@@ -67,40 +67,33 @@ data PGType
   | PGUUID                   -- ^ @uuid@
   | PGXML                    -- ^ @xml@
 
-data InterpretPGType (fun :: TyFun PGType *)
-type instance HaskellTyfun (a :: PGType) = InterpretPGType
-
-type instance Apply InterpretPGType 'PGBigint = Int64
+type instance Col Interpret 'PGBigint = Int64
 instance Lit 'PGBigint Int64 where
   lit = Expr . Op.unColumn . Op.pgInt8
 
-type instance Apply InterpretPGType 'PGBoolean = Bool
+type instance Col Interpret 'PGBoolean = Bool
 instance Lit 'PGBoolean Bool where
   lit = Expr . Op.unColumn . Op.pgBool
 
-type instance Apply InterpretPGType 'PGInteger = Int32
+type instance Col Interpret 'PGInteger = Int32
 instance Lit 'PGInteger Int32 where
   lit = Expr . Op.unColumn . Op.pgInt4 . fromIntegral
 
-type instance Apply InterpretPGType 'PGReal = Float
+type instance Col Interpret 'PGReal = Float
 instance Lit 'PGReal Float where
   lit = Expr . Op.unColumn . Op.pgDouble . realToFrac
 
-type instance Apply InterpretPGType 'PGText = Text
+type instance Col Interpret 'PGText = Text
 instance Lit 'PGText Text where
   lit = Expr . Op.unColumn . Op.pgStrictText
 
-type instance Apply InterpretPGType ('PGTimestamp 'WithoutTimeZone) = LocalTime
+type instance Col Interpret ('PGTimestamp 'WithoutTimeZone) = LocalTime
 instance Lit ('PGTimestamp 'WithoutTimeZone) LocalTime where
   lit = Expr . Op.unColumn . Op.pgLocalTime
 
---------------------------------------------------------------------------------
-data ExprType (f :: TyFun PGType *)
+type instance Col Interpret 'PGDouble = Double
+instance Lit 'PGDouble Double where
+  lit = Expr . Op.unColumn . Op.pgDouble
 
-type instance ExprTyfun (t :: PGType) = ExprType
-type instance Apply ExprType (t :: PGType) = Expr t
-
---------------------------------------------------------------------------------
-data InsertionType (f :: TyFun PGType *)
-type instance InsertionTyfun (t :: PGType) = InsertionType
-type instance Apply InsertionType (t :: PGType) = Expr t
+type instance Col Expr (t :: PGType) = Expr t
+type instance Col NullableExpr (t :: PGType) = Expr ('Nullable t)
