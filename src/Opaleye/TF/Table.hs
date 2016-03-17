@@ -19,7 +19,7 @@ data Column a = Column Symbol a
 
 data ExtractSchema (col :: k)
 
-type instance Col ExtractSchema ('Column columnName _) = Proxy columnName
-type instance Col Expr ('Column _ x) = Col Expr x
-type instance Col Interpret ('Column _ x) = Col Interpret x
-type instance Col Insertion ('Column _ x) = Col Insertion x
+type instance Col ExtractSchema ('Column columnName col) = Proxy columnName
+type instance Col Expr ('Column name x) = Col Expr x
+type instance Col Interpret ('Column name x) = Col Interpret x
+type instance Col Insertion ('Column name x) = Col Insertion x
