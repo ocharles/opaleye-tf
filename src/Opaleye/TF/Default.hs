@@ -28,3 +28,6 @@ data InsertionWithDefault (col :: k)
 data Default a
   = InsertDefault -- ^ Use the @DEFAULT@ value for this column.
   | ProvideValue a -- ^ Override the default value by providing an explicit value.
+
+insertDefault = InsertDefault
+overrideDefault = ProvideValue

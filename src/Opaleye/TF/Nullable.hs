@@ -25,8 +25,8 @@ type instance Col Interpret ('Nullable x) = Maybe (Col Interpret x)
 
 data Null a = Null | NotNull a
 
-nullable :: Expr a -> Expr ('Nullable a)
-nullable (Expr a) = Expr a
+toNullable :: Expr a -> Expr ('Nullable a)
+toNullable (Expr a) = Expr a
 
 null :: Expr ('Nullable a)
 null = Expr (Op.ConstExpr Op.NullLit)
@@ -36,5 +36,5 @@ type instance Col Expr ('NotNullable col) = Col Expr col
 type instance Col Expr ('Nullable col) = Col NullableExpr col
 type instance Col Interpret ('NotNullable col) = Col Interpret col
 type instance Col Interpret ('Nullable col) = Maybe (Col Interpret col)
-type instance Col Insertion ('NotNullable col) = Col Expr col
+type instance Col Insertion (col :: PGNull k) = Col Expr col
 type instance Col InsertionWithDefault (col :: PGNull k) = Default (Col Expr col)

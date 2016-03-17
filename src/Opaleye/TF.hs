@@ -16,7 +16,7 @@ module Opaleye.TF
          type Col,
 
          -- * Mapping PostgreSQL types
-         PGType(..), Lit(..), null, nullable,
+         PGType(..), Lit(..), null, toNullable,
 
          -- * Defining tables
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
@@ -25,7 +25,7 @@ module Opaleye.TF
          queryTable, Expr, select, leftJoin, restrict, (==.), (||.), ilike,
 
          -- * Inserting data
-         insert, Insertion, Default(..),
+         insert, Insertion, Default(..), overrideDefault, insertDefault,
 
          -- * TODO Organize
          Op.Query,
@@ -336,7 +336,8 @@ instance KnownSymbol columnName => GWriter (K1 i (Proxy columnName)) (K1 i (Expr
 -- | Given a 'Table' and a collection of rows for that table, @INSERT@ this data
 -- into PostgreSQL. The rows are specified as PostgreSQL expressions.
 insert
-  :: Insertable (rel Insertion)
+  :: forall (rel :: (k -> *) -> *).
+     Insertable (rel Insertion)
   => PG.Connection -> [rel Insertion] -> IO Int64
 insert conn rows =
   Op.runInsertMany conn
