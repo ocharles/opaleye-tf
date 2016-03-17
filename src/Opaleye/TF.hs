@@ -302,7 +302,7 @@ instance (KnownSymbol (TableName rel),Generic (rel Insertion),GWriter (Rep (rel 
     Op.Table (symbolVal (Proxy :: Proxy (TableName rel)))
              (lmap from
                    (Op.TableProperties (gwriter (Proxy :: Proxy (Rep (rel ExtractSchema))))
-                                       undefined))
+                                       (Op.View ())))
 
 class GWriter f g where
   gwriter :: proxy f -> Op.Writer (g x) ()
