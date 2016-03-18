@@ -25,7 +25,7 @@ module Opaleye.TF
          queryTable, Expr, select, leftJoin, restrict, (==.), (||.), ilike,
 
          -- * Inserting data
-         insert, Insertion, Default(..), overrideDefault, insertDefault,
+         insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
 
          -- * TODO Organize
          Op.Query,
@@ -74,8 +74,8 @@ import Prelude hiding (null)
 --------------------------------------------------------------------------------
 
 data T f =
-  T {tA :: Col f ('Column "a" ('NoDefault 'PGInteger))
-    ,tB :: Col f ('Column "b" ('HasDefault 'PGBoolean))}
+  T {tA :: Col f ('Column "a" ('NoDefault ('NotNullable PGInteger)))
+    ,tB :: Col f ('Column "b" ('HasDefault ('Nullable 'PGBoolean)))}
   deriving ((Generic))
 
 type instance TableName T = "t"
@@ -343,6 +343,29 @@ insert conn rows =
   Op.runInsertMany conn
                    (insertTable rows)
                    rows
+
+-- | Insert a single row and return it. This is useful if you have columns that
+-- have default values.
+insert1Returning
+  :: forall rel.
+     (Insertable (rel Insertion),Selectable (rel Expr) (rel Interpret),ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)),Generic (rel Expr))
+  => PG.Connection -> rel Insertion -> IO (rel Interpret)
+insert1Returning conn row =
+  fmap head
+       (Op.runInsertReturningExplicit
+          (queryRunner :: Op.QueryRunner (rel Expr) (rel Interpret))
+          conn
+          (case insertTable [row] of
+             Op.Table tableName props -> Op.Table tableName (remapProps props)
+             Op.TableWithSchema a b props ->
+               Op.TableWithSchema a
+                                  b
+                                  (remapProps props))
+          row
+          to)
+  where remapProps (Op.TableProperties (Op.Writer f) _) =
+          Op.TableProperties (Op.Writer f)
+                             (Op.View (columnViewRep (Proxy :: Proxy (Rep (rel ExtractSchema)))))
 
 {- $intro
 
