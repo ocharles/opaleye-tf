@@ -100,3 +100,8 @@ type instance Col Interpret 'PGBytea = ByteString
 
 type instance Col Expr (t :: PGType) = Expr t
 type instance Col NullableExpr (t :: PGType) = Expr ('Nullable t)
+
+pgNow :: Expr ('PGTimestamp withOrWithoutTimezone)
+pgNow =
+  case lit (pack "now") :: Expr 'PGText of
+    Expr a -> Expr a
