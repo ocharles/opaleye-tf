@@ -23,6 +23,7 @@ module Opaleye.TF
 
          -- * Querying tables
          queryTable, Expr, select, leftJoin, restrict, (==.), (||.), ilike,
+         filterQuery,
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
@@ -34,8 +35,9 @@ module Opaleye.TF
          Compose(..), Interpret)
        where
 
-import GHC.TypeLits
 import Control.Applicative
+import Control.Arrow (first, (&&&))
+import Control.Category ((.), id)
 import Control.Monad (void)
 import Data.Int
 import Data.Profunctor
@@ -45,6 +47,7 @@ import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.FromField as PG
 import qualified Database.PostgreSQL.Simple.FromRow as PG
 import GHC.Generics
+import GHC.TypeLits
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
@@ -69,16 +72,7 @@ import Opaleye.TF.Machinery
 import Opaleye.TF.Nullable
 import Opaleye.TF.Table
 import qualified Opaleye.Table as Op hiding (required)
-import Prelude hiding (null)
-
---------------------------------------------------------------------------------
-
-data T f =
-  T {tA :: Col f ('Column "a" ('NoDefault ('NotNullable PGInteger)))
-    ,tB :: Col f ('Column "b" ('HasDefault ('Nullable 'PGBoolean)))}
-  deriving ((Generic))
-
-type instance TableName T = "t"
+import Prelude hiding (null, (.), id)
 
 --------------------------------------------------------------------------------
 
@@ -366,6 +360,13 @@ insert1Returning conn row =
   where remapProps (Op.TableProperties (Op.Writer f) _) =
           Op.TableProperties (Op.Writer f)
                              (Op.View (columnViewRep (Proxy :: Proxy (Rep (rel ExtractSchema)))))
+
+-- | Given a 'Op.Query', filter the rows of the result set according to a
+-- predicate.
+filterQuery
+  :: (a -> Expr 'PGBoolean) -> Op.Query a -> Op.Query a
+filterQuery f t =
+  fmap snd (first restrict . fmap (f &&& id) t)
 
 {- $intro
 
