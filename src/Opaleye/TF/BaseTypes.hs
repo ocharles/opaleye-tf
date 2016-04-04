@@ -7,6 +7,7 @@
 
 module Opaleye.TF.BaseTypes where
 
+import Data.ByteString (ByteString)
 import Data.Int (Int32, Int64)
 import Data.Text
 import Data.Time (LocalTime)
@@ -94,6 +95,8 @@ instance Lit ('PGTimestamp 'WithoutTimeZone) LocalTime where
 type instance Col Interpret 'PGDouble = Double
 instance Lit 'PGDouble Double where
   lit = Expr . Op.unColumn . Op.pgDouble
+
+type instance Col Interpret 'PGBytea = ByteString
 
 type instance Col Expr (t :: PGType) = Expr t
 type instance Col NullableExpr (t :: PGType) = Expr ('Nullable t)
