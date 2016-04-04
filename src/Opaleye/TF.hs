@@ -16,7 +16,7 @@ module Opaleye.TF
          type Col,
 
          -- * Mapping PostgreSQL types
-         PGType(..), Lit(..), null, toNullable,
+         PGType(..), Lit(..), litMaybe, null, toNullable, pgNow,
 
          -- * Defining tables
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
@@ -32,7 +32,9 @@ module Opaleye.TF
          Op.Query,
 
          -- * Implementation details
-         Compose(..), Interpret)
+         Compose(..), Interpret, Selectable, Insertable, ColumnView
+
+         )
        where
 
 import Control.Applicative
