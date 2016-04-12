@@ -10,7 +10,7 @@ module Opaleye.TF.BaseTypes where
 import Data.ByteString (ByteString)
 import Data.Int (Int32, Int64)
 import Data.Text
-import Data.Time (LocalTime)
+import Data.Time (LocalTime, UTCTime)
 import GHC.TypeLits (Nat)
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.PGTypes as Op
@@ -91,6 +91,10 @@ instance Lit 'PGText Text where
 type instance Col Interpret ('PGTimestamp 'WithoutTimeZone) = LocalTime
 instance Lit ('PGTimestamp 'WithoutTimeZone) LocalTime where
   lit = Expr . Op.unColumn . Op.pgLocalTime
+
+type instance Col Interpret ('PGTimestamp 'WithTimeZone) = UTCTime
+instance Lit ('PGTimestamp 'WithTimeZone) UTCTime where
+  lit = Expr . Op.unColumn . Op.pgUTCTime
 
 type instance Col Interpret 'PGDouble = Double
 instance Lit 'PGDouble Double where
