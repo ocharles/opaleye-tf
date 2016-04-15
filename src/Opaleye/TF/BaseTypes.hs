@@ -13,6 +13,7 @@
 module Opaleye.TF.BaseTypes where
 
 import Data.ByteString (ByteString)
+import Data.Fixed (E0, E1, E2, E3, E6, E9, Fixed)
 import Data.Int (Int32, Int64)
 import Data.Text
 import Data.Time (LocalTime, UTCTime)
@@ -80,6 +81,12 @@ type instance Col Interpret 'PGText = Text
 type instance Col Interpret ('PGTimestamp 'WithoutTimeZone) = LocalTime
 type instance Col Interpret ('PGTimestamp 'WithTimeZone) = UTCTime
 type instance Col Interpret 'PGDouble = Double
+type instance Col Interpret ('PGNumeric p 0) = Fixed E0
+type instance Col Interpret ('PGNumeric p 1) = Fixed E1
+type instance Col Interpret ('PGNumeric p 2) = Fixed E2
+type instance Col Interpret ('PGNumeric p 3) = Fixed E3
+type instance Col Interpret ('PGNumeric p 6) = Fixed E6
+type instance Col Interpret ('PGNumeric p 9) = Fixed E9
 type instance Col Interpret 'PGBytea = ByteString
 
 instance Lit 'PGBigint where
