@@ -12,6 +12,8 @@ import Opaleye.TF.Expr
 import Opaleye.TF.Interpretation
 import Opaleye.TF.Insert
 import Opaleye.TF.Default
+import qualified Opaleye.Column as Op
+import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 
 -- | Indicate whether or not a column can take null values.
@@ -38,3 +40,16 @@ type instance Col Interpret ('NotNullable col) = Col Interpret col
 type instance Col Interpret ('Nullable col) = Maybe (Col Interpret col)
 type instance Col Insertion (col :: PGNull k) = Col Expr col
 type instance Col InsertionWithDefault (col :: PGNull k) = Default (Col Expr col)
+
+-- | Eliminate 'PGNull' from the type of an 'Expr'. Like 'maybe' for Haskell
+-- values.
+nullable
+  :: Expr b -> (Expr a -> Expr b) -> Expr ('Nullable a) -> Expr b
+nullable (Expr a) f (Expr e) =
+  case Op.matchNullable
+         (Op.Column a)
+         (\(Op.Column x) ->
+            case f (Expr x) of
+              Expr x' -> Op.Column x')
+         (Op.Column e) of
+    Op.Column a -> Expr a
