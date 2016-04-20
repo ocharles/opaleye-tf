@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE Arrows #-}
 
 module Opaleye.TF
        ( -- $intro
@@ -22,14 +23,14 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, Expr, select, leftJoin, restrict, (==.), (||.), ilike,
+         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike,
          filterQuery,
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
 
          -- * TODO Organize
-         Op.Query,
+         Op.Query, Op.QueryArr,
 
          -- * Implementation details
          Compose(..), Interpret, Selectable, Insertable, ColumnView
@@ -38,7 +39,7 @@ module Opaleye.TF
        where
 
 import Control.Applicative
-import Control.Arrow (first, (&&&))
+import Control.Arrow (first, (&&&), returnA)
 import Control.Category ((.), id)
 import Control.Monad (void)
 import Data.Int
@@ -94,6 +95,33 @@ queryTable =
         columnMaker =
           Op.ColumnMaker
             (Op.PackMap (\inj columns -> fmap to (injPackMap inj columns)))
+
+-- | Generate an @INNER JOIN@ directly from a field accessor.
+-- This has a similar function to 'queryTable' but with has an input specified, which makes composition of joins easier.
+--
+-- @
+--     listPackagesByUserName :: Text -> Query (Package Expr)
+--     listPackagesByUserName = queryBy packageMaintainerId . queryBy userName
+--
+--     listUsersAndPackagesByUserId :: Text -> Query (Package Expr, User Id)
+--     listUsersAndPackagesByUserId = lifA2 (,) (queryBy packageMaintainerId) (queryBy userId)
+-- @
+--
+-- This function can be thought of as a sort of reverse form of 'arr', where the input and output in the resulting 'QueryArr' is swapped around.
+-- However, note that @queryBy f@ is not inverse to @arr f@ since neither
+queryBy :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+        => (rel Expr -> Expr prim) -> Op.QueryArr (Expr prim) (rel Expr)
+queryBy = queryOnto (==.)
+
+-- | A generalization of 'queryBy' taking an arbitrary comparison operator for the join clause.
+queryOnto :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+          => (Expr prim -> Expr prim -> Expr 'PGBoolean)
+          -> (rel Expr -> Expr prim)
+          -> Op.QueryArr (Expr prim) (rel Expr)
+queryOnto op f = proc a -> do
+  t <- queryTable -< ()
+  restrict -< f t `op` a
+  returnA -< t
 
 -- | A type class to get the column names out of the record.
 class ColumnView f g where
