@@ -52,4 +52,4 @@ nullable (Expr a) f (Expr e) =
             case f (Expr x) of
               Expr x' -> Op.Column x')
          (Op.Column e) of
-    Op.Column a -> Expr a
+    Op.Column b -> Expr b

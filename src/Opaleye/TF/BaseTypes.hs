@@ -1,9 +1,14 @@
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Opaleye.TF.BaseTypes where
 
@@ -18,7 +23,6 @@ import Opaleye.TF.Col
 import Opaleye.TF.Expr
 import Opaleye.TF.Interpretation
 import Opaleye.TF.Lit
-import Opaleye.TF.Nullable
 
 data WithTimeZone
   = WithTimeZone
@@ -69,43 +73,38 @@ data PGType
   | PGXML                    -- ^ @xml@
 
 type instance Col Interpret 'PGBigint = Int64
-instance Lit 'PGBigint Int64 where
-  lit = Expr . Op.unColumn . Op.pgInt8
-
 type instance Col Interpret 'PGBoolean = Bool
-instance Lit 'PGBoolean Bool where
-  lit = Expr . Op.unColumn . Op.pgBool
-
 type instance Col Interpret 'PGInteger = Int32
-instance Lit 'PGInteger Int32 where
-  lit = Expr . Op.unColumn . Op.pgInt4 . fromIntegral
-
 type instance Col Interpret 'PGReal = Float
-instance Lit 'PGReal Float where
-  lit = Expr . Op.unColumn . Op.pgDouble . realToFrac
-
 type instance Col Interpret 'PGText = Text
-instance Lit 'PGText Text where
-  lit = Expr . Op.unColumn . Op.pgStrictText
-
 type instance Col Interpret ('PGTimestamp 'WithoutTimeZone) = LocalTime
-instance Lit ('PGTimestamp 'WithoutTimeZone) LocalTime where
-  lit = Expr . Op.unColumn . Op.pgLocalTime
-
 type instance Col Interpret ('PGTimestamp 'WithTimeZone) = UTCTime
-instance Lit ('PGTimestamp 'WithTimeZone) UTCTime where
-  lit = Expr . Op.unColumn . Op.pgUTCTime
-
 type instance Col Interpret 'PGDouble = Double
-instance Lit 'PGDouble Double where
-  lit = Expr . Op.unColumn . Op.pgDouble
-
 type instance Col Interpret 'PGBytea = ByteString
 
-type instance Col Expr (t :: PGType) = Expr t
-type instance Col NullableExpr (t :: PGType) = Expr ('Nullable t)
+instance Lit 'PGBigint where
+  lit = Expr . Op.unColumn . Op.pgInt8
 
-pgNow :: Expr ('PGTimestamp withOrWithoutTimezone)
-pgNow =
-  case lit (pack "now") :: Expr 'PGText of
-    Expr a -> Expr a
+instance Lit 'PGBoolean where
+  lit = Expr . Op.unColumn . Op.pgBool
+
+instance Lit 'PGInteger where
+  lit = Expr . Op.unColumn . Op.pgInt4 . fromIntegral
+
+instance Lit 'PGReal where
+  lit = Expr . Op.unColumn . Op.pgDouble . realToFrac
+
+instance Lit 'PGText where
+  lit = Expr . Op.unColumn . Op.pgStrictText
+
+instance Lit ('PGTimestamp 'WithoutTimeZone) where
+  lit = Expr . Op.unColumn . Op.pgLocalTime
+
+instance Lit ('PGTimestamp 'WithTimeZone) where
+  lit = Expr . Op.unColumn . Op.pgUTCTime
+
+instance Lit 'PGDouble where
+  lit = Expr . Op.unColumn . Op.pgDouble
+
+pgNow :: Expr ('PGTimestamp 'WithTimeZone)
+pgNow = mapExpr Cast (lit (pack "now") :: Expr 'PGText)

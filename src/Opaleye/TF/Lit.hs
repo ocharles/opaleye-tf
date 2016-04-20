@@ -1,17 +1,23 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Opaleye.TF.Lit where
 
+import Opaleye.TF.Col
 import Opaleye.TF.Expr
+import Opaleye.TF.Interpretation
 import Opaleye.TF.Nullable
 import Prelude hiding (null)
 
-class Lit (pgType :: k) (haskellType :: *) | pgType -> haskellType where
-  lit :: haskellType -> Expr pgType
+class Lit (exprType :: k) where
+  lit :: Col Interpret exprType -> Expr exprType
 
-litMaybe :: Lit pg haskell
-         => Maybe haskell -> Expr ('Nullable pg)
-litMaybe = maybe null (toNullable . lit)
+instance (Maybe (Col Interpret a) ~ Col Interpret ('Nullable a),Lit a) => Lit ('Nullable a) where
+  lit (Just haskell) = mapExpr Cast (lit haskell :: Expr a)
+  lit Nothing = null
