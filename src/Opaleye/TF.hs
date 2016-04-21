@@ -33,7 +33,7 @@ module Opaleye.TF
          Op.Query, Op.QueryArr,
 
          -- * Implementation details
-         Compose(..), Interpret, Selectable, Insertable, ColumnView
+         Compose(..), Interpret, Selectable, Insertable, ColumnView, queryRunner
 
          )
        where
