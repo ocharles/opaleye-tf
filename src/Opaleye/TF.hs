@@ -201,13 +201,25 @@ instance (Selectable e1 h1,Selectable e2 h2,Selectable e3 h3) => Selectable (e1,
   queryRunner =
     dimap (\(a,b,c) -> ((a,b),c))
           (\((a,b),c) -> (a,b,c))
-          (queryRunner ***! queryRunner ***! queryRunner)
+          queryRunner
 
 instance (Selectable e1 h1,Selectable e2 h2,Selectable e3 h3,Selectable e4 h4) => Selectable (e1,e2,e3,e4) (h1,h2,h3,h4) where
   queryRunner =
     dimap (\(a,b,c,d) -> ((a,b),(c,d)))
           (\((a,b),(c,d)) -> (a,b,c,d))
-          ((queryRunner ***! queryRunner) ***! (queryRunner ***! queryRunner))
+          queryRunner
+
+instance (Selectable e1 h1,Selectable e2 h2,Selectable e3 h3,Selectable e4 h4,Selectable e5 h5) => Selectable (e1,e2,e3,e4,e5) (h1,h2,h3,h4,h5) where
+  queryRunner =
+    dimap (\(a,b,c,d,e) -> ((a,b,c,d),e))
+          (\((a,b,c,d),e) -> (a,b,c,d,e))
+          queryRunner
+
+instance (Selectable e1 h1,Selectable e2 h2,Selectable e3 h3,Selectable e4 h4,Selectable e5 h5,Selectable e6 h6) => Selectable (e1,e2,e3,e4,e5,e6) (h1,h2,h3,h4,h5,h6) where
+  queryRunner =
+    dimap (\(a,b,c,d,e,f) -> ((a,b,c,d),(e,f)))
+          (\((a,b,c,d),(e,f)) -> (a,b,c,d,e,f))
+          queryRunner
 
 -- Build a query runner generically.
 gqueryRunner :: (HasFields (Rep expr), Generic expr, ParseRelRep (Rep expr) (Rep haskell), Generic haskell, UnpackspecRel (Rep expr)) => Op.QueryRunner expr haskell
