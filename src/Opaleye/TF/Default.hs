@@ -7,8 +7,8 @@ module Opaleye.TF.Default where
 
 import Opaleye.TF.Col
 import Opaleye.TF.Expr
-import Opaleye.TF.Interpretation
 import Opaleye.TF.Insert
+import Opaleye.TF.Interpretation
 
 -- | Indicate whether or not a column has a default value.
 data PGDefault t

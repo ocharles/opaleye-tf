@@ -10,6 +10,8 @@ import Opaleye.TF.Col
 import Opaleye.TF.Expr
 import Opaleye.TF.Insert
 import Opaleye.TF.Interpretation
+import Opaleye.TF.Machinery
+import Opaleye.TF.Nullable
 import GHC.TypeLits (Symbol)
 import Data.Proxy
 
@@ -23,3 +25,4 @@ type instance Col ExtractSchema ('Column columnName col) = Proxy columnName
 type instance Col Expr ('Column name x) = Col Expr x
 type instance Col Interpret ('Column name x) = Col Interpret x
 type instance Col Insertion ('Column name x) = Col Insertion x
+type instance Col (Compose Expr 'Nullable) ('Column name x) = Col (Compose Expr 'Nullable) x
