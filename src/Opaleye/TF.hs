@@ -23,7 +23,7 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike,
+         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull,
          filterQuery,
 
          -- * Inserting data
@@ -51,6 +51,7 @@ import qualified Database.PostgreSQL.Simple.FromField as PG
 import qualified Database.PostgreSQL.Simple.FromRow as PG
 import GHC.Generics
 import GHC.TypeLits
+import qualified Opaleye.Column as Op
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
@@ -324,6 +325,12 @@ ilike :: Expr 'PGText -> Expr 'PGText -> Expr 'PGBoolean
 Expr a `ilike` Expr b =
   case Op.binOp (Op.OpOther "ILIKE") (Op.Column a) (Op.Column b) of
     Op.Column c -> Expr c
+
+-- | The PostgreSQL @IS NULL@ operator
+isNull :: Expr ('Nullable a) -> Expr 'PGBoolean
+isNull (Expr a) =
+  case Op.isNull (Op.Column a) of
+    Op.Column b -> Expr b
 
 infix 4 ==.
 infixr 2 ||.
