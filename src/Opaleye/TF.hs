@@ -23,7 +23,7 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull,
+         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
          filterQuery,
 
          -- * Inserting data
@@ -76,7 +76,7 @@ import Opaleye.TF.Machinery
 import Opaleye.TF.Nullable
 import Opaleye.TF.Table
 import qualified Opaleye.Table as Op hiding (required)
-import Prelude hiding (null, (.), id)
+import Prelude hiding (null, (.), id, not)
 
 --------------------------------------------------------------------------------
 
@@ -330,6 +330,12 @@ Expr a `ilike` Expr b =
 isNull :: Expr ('Nullable a) -> Expr 'PGBoolean
 isNull (Expr a) =
   case Op.isNull (Op.Column a) of
+    Op.Column b -> Expr b
+
+-- | The PostgreSQL @NOT@ operator
+not :: Expr 'PGBoolean -> Expr 'PGBoolean
+not (Expr a) =
+  case Op.not (Op.Column a) of
     Op.Column b -> Expr b
 
 infix 4 ==.
