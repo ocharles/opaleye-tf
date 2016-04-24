@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE Arrows #-}
 
 module Opaleye.TF
        ( -- $intro
@@ -22,23 +23,23 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, Expr, select, leftJoin, restrict, (==.), (||.), ilike,
+         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
          filterQuery,
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
 
          -- * TODO Organize
-         Op.Query,
+         Op.Query, Op.QueryArr,
 
          -- * Implementation details
-         Compose(..), Interpret, Selectable, Insertable, ColumnView
+         Compose(..), Interpret, Selectable, Insertable, ColumnView, queryRunner
 
          )
        where
 
 import Control.Applicative
-import Control.Arrow (first, (&&&))
+import Control.Arrow (first, (&&&), returnA)
 import Control.Category ((.), id)
 import Control.Monad (void)
 import Data.Int
@@ -50,6 +51,7 @@ import qualified Database.PostgreSQL.Simple.FromField as PG
 import qualified Database.PostgreSQL.Simple.FromRow as PG
 import GHC.Generics
 import GHC.TypeLits
+import qualified Opaleye.Column as Op
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
@@ -74,7 +76,7 @@ import Opaleye.TF.Machinery
 import Opaleye.TF.Nullable
 import Opaleye.TF.Table
 import qualified Opaleye.Table as Op hiding (required)
-import Prelude hiding (null, (.), id)
+import Prelude hiding (null, (.), id, not)
 
 --------------------------------------------------------------------------------
 
@@ -94,6 +96,33 @@ queryTable =
         columnMaker =
           Op.ColumnMaker
             (Op.PackMap (\inj columns -> fmap to (injPackMap inj columns)))
+
+-- | Generate an @INNER JOIN@ directly from a field accessor.
+-- This has a similar function to 'queryTable' but with has an input specified, which makes composition of joins easier.
+--
+-- @
+--     listPackagesByUserName :: Text -> Query (Package Expr)
+--     listPackagesByUserName = queryBy packageMaintainerId . queryBy userName
+--
+--     listUsersAndPackagesByUserId :: Text -> Query (Package Expr, User Id)
+--     listUsersAndPackagesByUserId = lifA2 (,) (queryBy packageMaintainerId) (queryBy userId)
+-- @
+--
+-- This function can be thought of as a sort of reverse form of 'arr', where the input and output in the resulting 'QueryArr' is swapped around.
+-- However, note that @queryBy f@ is not inverse to @arr f@ since neither
+queryBy :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+        => (rel Expr -> Expr prim) -> Op.QueryArr (Expr prim) (rel Expr)
+queryBy = queryOnto (==.)
+
+-- | A generalization of 'queryBy' taking an arbitrary comparison operator for the join clause.
+queryOnto :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+          => (Expr prim -> Expr prim -> Expr 'PGBoolean)
+          -> (rel Expr -> Expr prim)
+          -> Op.QueryArr (Expr prim) (rel Expr)
+queryOnto op f = proc a -> do
+  t <- queryTable -< ()
+  restrict -< f t `op` a
+  returnA -< t
 
 -- | A type class to get the column names out of the record.
 class ColumnView f g where
@@ -173,13 +202,25 @@ instance (Selectable e1 h1,Selectable e2 h2,Selectable e3 h3) => Selectable (e1,
   queryRunner =
     dimap (\(a,b,c) -> ((a,b),c))
           (\((a,b),c) -> (a,b,c))
-          (queryRunner ***! queryRunner ***! queryRunner)
+          queryRunner
 
 instance (Selectable e1 h1,Selectable e2 h2,Selectable e3 h3,Selectable e4 h4) => Selectable (e1,e2,e3,e4) (h1,h2,h3,h4) where
   queryRunner =
     dimap (\(a,b,c,d) -> ((a,b),(c,d)))
           (\((a,b),(c,d)) -> (a,b,c,d))
-          ((queryRunner ***! queryRunner) ***! (queryRunner ***! queryRunner))
+          queryRunner
+
+instance (Selectable e1 h1,Selectable e2 h2,Selectable e3 h3,Selectable e4 h4,Selectable e5 h5) => Selectable (e1,e2,e3,e4,e5) (h1,h2,h3,h4,h5) where
+  queryRunner =
+    dimap (\(a,b,c,d,e) -> ((a,b,c,d),e))
+          (\((a,b,c,d),e) -> (a,b,c,d,e))
+          queryRunner
+
+instance (Selectable e1 h1,Selectable e2 h2,Selectable e3 h3,Selectable e4 h4,Selectable e5 h5,Selectable e6 h6) => Selectable (e1,e2,e3,e4,e5,e6) (h1,h2,h3,h4,h5,h6) where
+  queryRunner =
+    dimap (\(a,b,c,d,e,f) -> ((a,b,c,d),(e,f)))
+          (\((a,b,c,d),(e,f)) -> (a,b,c,d,e,f))
+          queryRunner
 
 -- Build a query runner generically.
 gqueryRunner :: (HasFields (Rep expr), Generic expr, ParseRelRep (Rep expr) (Rep haskell), Generic haskell, UnpackspecRel (Rep expr)) => Op.QueryRunner expr haskell
@@ -284,6 +325,18 @@ ilike :: Expr 'PGText -> Expr 'PGText -> Expr 'PGBoolean
 Expr a `ilike` Expr b =
   case Op.binOp (Op.OpOther "ILIKE") (Op.Column a) (Op.Column b) of
     Op.Column c -> Expr c
+
+-- | The PostgreSQL @IS NULL@ operator
+isNull :: Expr ('Nullable a) -> Expr 'PGBoolean
+isNull (Expr a) =
+  case Op.isNull (Op.Column a) of
+    Op.Column b -> Expr b
+
+-- | The PostgreSQL @NOT@ operator
+not :: Expr 'PGBoolean -> Expr 'PGBoolean
+not (Expr a) =
+  case Op.not (Op.Column a) of
+    Op.Column b -> Expr b
 
 infix 4 ==.
 infixr 2 ||.
