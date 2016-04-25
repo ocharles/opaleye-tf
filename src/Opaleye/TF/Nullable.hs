@@ -45,6 +45,11 @@ type instance Col (Compose Expr 'Nullable) ('Nullable col) = Expr ('Nullable col
 type instance Col (Compose Expr 'Nullable) ('NotNullable col) = Expr ('Nullable col)
 type instance Col (Compose Expr 'Nullable) ('HasDefault col) = Col (Compose Expr 'Nullable) col
 
+type instance Col (Compose Interpret 'Nullable) ('HasDefault col) = Col (Compose Interpret 'Nullable) col
+type instance Col (Compose Interpret 'Nullable) ('NoDefault col) = Col (Compose Interpret 'Nullable) col
+type instance Col (Compose Interpret 'Nullable) ('NotNullable col) = Col Interpret ('Nullable col)
+type instance Col (Compose Interpret 'Nullable) ('Nullable col) = Col Interpret ('Nullable col)
+
 -- | Eliminate 'PGNull' from the type of an 'Expr'. Like 'maybe' for Haskell
 -- values.
 nullable
