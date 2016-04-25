@@ -44,6 +44,7 @@ type instance Col InsertionWithDefault (col :: PGNull k) = Default (Col Expr col
 type instance Col (Compose Expr 'Nullable) ('Nullable col) = Expr ('Nullable col)
 type instance Col (Compose Expr 'Nullable) ('NotNullable col) = Expr ('Nullable col)
 type instance Col (Compose Expr 'Nullable) ('HasDefault col) = Col (Compose Expr 'Nullable) col
+type instance Col (Compose Expr 'Nullable) ('NoDefault col) = Col (Compose Expr 'Nullable) col
 
 type instance Col (Compose Interpret 'Nullable) ('HasDefault col) = Col (Compose Interpret 'Nullable) col
 type instance Col (Compose Interpret 'Nullable) ('NoDefault col) = Col (Compose Interpret 'Nullable) col
