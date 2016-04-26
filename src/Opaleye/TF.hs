@@ -162,7 +162,7 @@ select conn = Op.runQueryExplicit queryRunner conn
 class Selectable expr haskell | expr -> haskell where
   queryRunner :: Op.QueryRunner expr haskell
 
-instance (haskell ~ Col Interpret ('Nullable prim), PG.FromField haskell) => Selectable (Expr ('Nullable prim)) haskell where
+instance (haskell ~ Col Interpret t, PG.FromField haskell) => Selectable (Expr t) haskell where
   queryRunner = lmap (\(Expr a) -> Op.Column a) (Op.queryRunner Op.fieldQueryRunnerColumn)
 
 -- A scary instance for interpreting Expr to Haskell types generically.

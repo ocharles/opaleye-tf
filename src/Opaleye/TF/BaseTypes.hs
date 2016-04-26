@@ -73,6 +73,8 @@ data PGType
   | PGUUID                   -- ^ @uuid@
   | PGXML                    -- ^ @xml@
 
+type instance Col Expr (t :: PGType) = Expr t
+
 type instance Col Interpret 'PGBigint = Int64
 type instance Col Interpret 'PGBoolean = Bool
 type instance Col Interpret 'PGInteger = Int32
