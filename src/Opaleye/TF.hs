@@ -26,7 +26,7 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
+         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (/=.), (<.), (<=.), (>.), (>=.),(||.), ilike, isNull, not,
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, Op.limit, Op.offset,
 
          -- * Inserting data
@@ -340,10 +340,40 @@ Expr a ==. Expr b =
   case Op.Column a Op..== Op.Column b of
     Op.Column c -> Expr c
 
+-- | The PostgreSQL @!=@ or @<>@ operator.
+(/=.) :: Expr a -> Expr a -> Expr 'PGBoolean
+Expr a /=. Expr b =
+  case Op.Column a Op../= Op.Column b of
+    Op.Column c -> Expr c
+
 -- | The PostgreSQL @OR@ operator.
 (||.) :: Expr a -> Expr a -> Expr 'PGBoolean
 Expr a ||. Expr b =
   case Op.Column a Op..|| Op.Column b of
+    Op.Column c -> Expr c
+
+-- | The PostgreSQL @<@ operator.
+(<.) :: Expr a -> Expr a -> Expr 'PGBoolean
+Expr a <. Expr b =
+  case Op.binOp Op.OpLt (Op.Column a) (Op.Column b) of
+    Op.Column c -> Expr c
+
+-- | The PostgreSQL @<=@ operator.
+(<=.) :: Expr a -> Expr a -> Expr 'PGBoolean
+Expr a <=. Expr b =
+  case Op.binOp Op.OpLtEq (Op.Column a) (Op.Column b) of
+    Op.Column c -> Expr c
+
+-- | The PostgreSQL @>@ operator.
+(>.) :: Expr a -> Expr a -> Expr 'PGBoolean
+Expr a >. Expr b =
+  case Op.binOp Op.OpGt (Op.Column a) (Op.Column b) of
+    Op.Column c -> Expr c
+
+-- | The PostgreSQL @>@ operator.
+(>=.) :: Expr a -> Expr a -> Expr 'PGBoolean
+Expr a >=. Expr b =
+  case Op.binOp Op.OpGtEq (Op.Column a) (Op.Column b) of
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @ILIKE@ operator.
@@ -365,7 +395,12 @@ not (Expr a) =
     Op.Column b -> Expr b
 
 infix 4 ==.
+infix 4 /=.
 infixr 2 ||.
+infix 4 <.
+infix 4 <=.
+infix 4 >.
+infix 4 >=.
 
 --------------------------------------------------------------------------------
 
