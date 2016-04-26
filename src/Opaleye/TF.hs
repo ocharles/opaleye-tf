@@ -107,9 +107,6 @@ queryTable =
 -- @
 --     listPackagesByUserName :: Text -> Query (Package Expr)
 --     listPackagesByUserName = queryBy packageMaintainerId . queryBy userName
---
---     listUsersAndPackagesByUserId :: Text -> Query (Package Expr, User Id)
---     listUsersAndPackagesByUserId = lifA2 (,) (queryBy packageMaintainerId) (queryBy userId)
 -- @
 --
 -- This function can be thought of as a sort of reverse form of 'arr', where the input and output in the resulting 'QueryArr' is swapped around.
