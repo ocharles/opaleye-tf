@@ -5,6 +5,7 @@
 module Main where
 
 import Data.Int (Int32)
+import Data.Monoid ((<>))
 import GHC.Generics
 import Opaleye.TF
 import Test.Tasty
@@ -12,8 +13,9 @@ import Test.Tasty.HUnit
 
 --------------------------------------------------------------------------------
 data Table f =
-  Table {tableFoo :: Col f ('Column "foo" 'PGInteger)}
-  deriving (Generic)
+  Table {tableFoo :: Col f ('Column "foo" ('NotNullable PGInteger))
+        ,tableBar :: Col f ('Column "bar" ('Nullable 'PGText))}
+  deriving ((Generic))
 
 type instance TableName Table = "table"
 
@@ -30,6 +32,14 @@ canSelectASingleColumn =
   let query :: Query (Expr 'PGInteger)
       query = fmap tableFoo queryTable
   in shouldTypecheck (\pg -> select pg query :: IO [Int32])
+
+canOrder :: TestTree
+canOrder =
+  testCase "Can order" $
+  let query :: Query (Table Expr)
+      query =
+        orderBy (asc tableFoo <> orderNulls asc NullsLast tableBar) queryTable
+  in shouldTypecheck (\pg -> select pg query :: IO [Table Interpret])
 
 --------------------------------------------------------------------------------
 main :: IO ()

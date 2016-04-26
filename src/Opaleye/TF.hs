@@ -1,3 +1,5 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
@@ -24,7 +26,7 @@ module Opaleye.TF
 
          -- * Querying tables
          queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
-         filterQuery,
+         filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy,
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
@@ -55,6 +57,7 @@ import qualified Opaleye.Column as Op
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
+import qualified Opaleye.Internal.Order as Op
 import qualified Opaleye.Internal.PackMap as Op
 import qualified Opaleye.Internal.RunQuery as Op
 import qualified Opaleye.Internal.Table as Op
@@ -63,6 +66,7 @@ import qualified Opaleye.Internal.Unpackspec as Op
 import qualified Opaleye.Join as Op
 import qualified Opaleye.Manipulation as Op
 import qualified Opaleye.Operators as Op
+import qualified Opaleye.Order as Op
 import qualified Opaleye.QueryArr as Op
 import qualified Opaleye.RunQuery as Op
 import Opaleye.TF.BaseTypes
@@ -425,6 +429,52 @@ filterQuery
   :: (a -> Expr 'PGBoolean) -> Op.Query a -> Op.Query a
 filterQuery f t =
   fmap snd (first restrict . fmap (f &&& id) t)
+
+--------------------------------------------------------------------------------
+newtype PGOrdering a =
+  PGOrdering (a -> [(Op.OrderOp,Op.PrimExpr)])
+  deriving (Monoid)
+
+asc :: (a -> Expr (b :: PGType)) -> PGOrdering a
+asc f =
+  PGOrdering
+    (\x ->
+       case f x of
+         Expr a -> [(Op.OrderOp Op.OpAsc Op.NullsFirst,a)])
+
+desc :: (a -> Expr (b :: PGType)) -> PGOrdering a
+desc f =
+  PGOrdering
+    (\x ->
+       case f x of
+         Expr a -> [(Op.OrderOp Op.OpDesc Op.NullsFirst,a)])
+
+data OrderNulls
+  = NullsFirst
+  | NullsLast
+  deriving (Enum,Ord,Eq,Read,Show,Bounded)
+
+orderNulls :: forall a b.
+              (forall (x :: PGType). (a -> Expr x) -> PGOrdering a)
+           -> OrderNulls
+           -> (a -> Expr ('Nullable (b :: PGType)))
+           -> PGOrdering a
+orderNulls direction nulls f =
+  case direction (\a ->
+                    case f a of
+                      Expr x -> Expr x :: Expr b) of
+    PGOrdering g ->
+      PGOrdering
+        (\a ->
+           map (first (\(Op.OrderOp orderOp _) -> Op.OrderOp orderOp nullsDir))
+               (g a))
+  where nullsDir =
+          case nulls of
+            NullsFirst -> Op.NullsFirst
+            NullsLast -> Op.NullsLast
+
+orderBy :: PGOrdering a -> Op.Query a -> Op.Query a
+orderBy (PGOrdering f) = Op.orderBy (Op.Order f)
 
 {- $intro
 

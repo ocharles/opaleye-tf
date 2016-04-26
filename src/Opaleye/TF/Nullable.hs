@@ -34,9 +34,8 @@ toNullable (Expr a) = Expr a
 null :: Expr ('Nullable a)
 null = Expr (Op.ConstExpr Op.NullLit)
 
-data NullableExpr (col :: k)
 type instance Col Expr ('NotNullable col) = Col Expr col
-type instance Col Expr ('Nullable col) = Col NullableExpr col
+type instance Col Expr ('Nullable col) = Expr ('Nullable col)
 type instance Col Interpret ('NotNullable col) = Col Interpret col
 type instance Col Interpret ('Nullable col) = Maybe (Col Interpret col)
 type instance Col Insertion (col :: PGNull k) = Col Expr col
