@@ -26,7 +26,7 @@ module Opaleye.TF
 
          -- * Querying tables
          queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
-         filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy,
+         filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, Op.limit, Op.offset,
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
