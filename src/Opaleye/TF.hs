@@ -53,21 +53,22 @@ import qualified Database.PostgreSQL.Simple.FromField as PG
 import qualified Database.PostgreSQL.Simple.FromRow as PG
 import GHC.Generics
 import GHC.TypeLits
-import qualified Opaleye.Column as Op
+import qualified Opaleye.Column as Op hiding (toNullable)
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
 import qualified Opaleye.Internal.Order as Op
 import qualified Opaleye.Internal.PackMap as Op
+import qualified Opaleye.Internal.PrimQuery as Op (PrimQuery' (Join), JoinType (LeftJoin))
 import qualified Opaleye.Internal.RunQuery as Op
 import qualified Opaleye.Internal.Table as Op
 import qualified Opaleye.Internal.TableMaker as Op
+import qualified Opaleye.Internal.Tag as Op
 import qualified Opaleye.Internal.Unpackspec as Op
-import qualified Opaleye.Join as Op
+import qualified Opaleye.Internal.QueryArr as Op
 import qualified Opaleye.Manipulation as Op
 import qualified Opaleye.Operators as Op
 import qualified Opaleye.Order as Op
-import qualified Opaleye.QueryArr as Op
 import qualified Opaleye.RunQuery as Op
 import Opaleye.TF.BaseTypes
 import Opaleye.TF.Col
@@ -274,19 +275,35 @@ instance UnpackspecRel (K1 i (Expr colType)) where
 -- then all columns will be @null@.
 leftJoin :: (ToNull right nullRight)
          => (left -> right -> Expr 'PGBoolean)
-         -> Op.Query left
+         -> Op.QueryArr a left
          -> Op.Query right
-         -> Op.Query (left,nullRight)
+         -> Op.QueryArr a (left,nullRight)
 leftJoin f l r =
-  Op.leftJoinExplicit
-    undefined
-    undefined
+  leftJoinExplicit
     (Op.NullMaker toNull)
     l
     r
     (\(l',r') ->
        case f l' r' of
          Expr prim -> Op.Column prim)
+  where
+    -- This is similar to Op.leftJoinExplicit, but the resulting arrows may receive an input which is applied to the left-hand side query
+    leftJoinExplicit :: Op.NullMaker columnsB nullableColumnsB
+                     -> Op.QueryArr a columnsA
+                     -> Op.Query columnsB
+                     -> ((columnsA, columnsB) -> Op.Column _PGBool)
+                     -> Op.QueryArr a (columnsA, nullableColumnsB)
+    leftJoinExplicit nullmaker qA qB cond = Op.simpleQueryArr q
+      where
+        q (a, startTag) = ((columnsA, nullableColumnsB), primQueryR, Op.next endTag)
+          where
+            (columnsA, primQueryA, midTag) = Op.runSimpleQueryArr qA (a, startTag)
+            (columnsB, primQueryB, endTag) = Op.runSimpleQueryArr qB ((), midTag)
+
+            nullableColumnsB = Op.toNullable nullmaker columnsB
+
+            Op.Column cond' = cond (columnsA, columnsB)
+            primQueryR = Op.Join Op.LeftJoin cond' primQueryA primQueryB
 
 class ToNull expr exprNull | expr -> exprNull where
   toNull :: expr -> exprNull
