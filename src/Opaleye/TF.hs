@@ -387,25 +387,25 @@ Expr a ||. Expr b =
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @<@ operator.
-(<.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+(<.) :: forall s (a :: PGType). Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a <. Expr b =
   case Op.binOp Op.OpLt (Op.Column a) (Op.Column b) of
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @<=@ operator.
-(<=.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+(<=.) :: forall s (a :: PGType). Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a <=. Expr b =
   case Op.binOp Op.OpLtEq (Op.Column a) (Op.Column b) of
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @>@ operator.
-(>.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+(>.) :: forall s (a :: PGType). Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a >. Expr b =
   case Op.binOp Op.OpGt (Op.Column a) (Op.Column b) of
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @>@ operator.
-(>=.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+(>=.) :: forall s (a :: PGType). Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a >=. Expr b =
   case Op.binOp Op.OpGtEq (Op.Column a) (Op.Column b) of
     Op.Column c -> Expr c
