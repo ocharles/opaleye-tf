@@ -25,7 +25,7 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
+         queryTable, {- queryBy, queryOnto, -}Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, Op.limit, Op.offset,
 
          -- * Inserting data
@@ -42,7 +42,7 @@ module Opaleye.TF
 
 import Opaleye.TF.Scope (Scope(Z))
 import Control.Applicative
-import Control.Arrow (first, (&&&), returnA)
+import Control.Arrow (first, (&&&))
 import Control.Category ((.), id)
 import Control.Monad (void)
 import Data.Int
@@ -84,14 +84,18 @@ import qualified Opaleye.Table as Op hiding (required)
 import Prelude hiding (null, (.), id, not)
 
 --------------------------------------------------------------------------------
+newtype Query (s :: Scope) a = Query (Op.Query a)
+
+--------------------------------------------------------------------------------
 
 -- | 'queryTable' moves from 'Table' to 'Expr'. Accessing the fields of your
 -- table record will now give you expressions to view data in the individual
 -- columns.
-queryTable :: forall (rel :: (k -> *) -> *) s.
-              (Generic (rel ExtractSchema),Generic (rel (Expr s)), InjPackMap (Rep (rel (Expr s))), ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))), KnownSymbol (TableName rel))
-           => Op.Query (rel (Expr s))
+queryTable :: forall (rel :: (k -> *) -> *) (s :: Scope).
+              (Generic (rel ExtractSchema),Generic (rel (Expr s)),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel))
+           => Query s (rel (Expr s))
 queryTable =
+  Query $
   Op.queryTableExplicit
     columnMaker
     (Op.Table (symbolVal (Proxy :: Proxy (TableName rel)))
@@ -102,29 +106,30 @@ queryTable =
           Op.ColumnMaker
             (Op.PackMap (\inj columns -> fmap to (injPackMap inj columns)))
 
--- | Generate an @INNER JOIN@ directly from a field accessor.
--- This has a similar function to 'queryTable' but with has an input specified, which makes composition of joins easier.
---
--- @
---     listPackagesByUserName :: Text -> Query (Package Expr)
---     listPackagesByUserName = queryBy packageMaintainerId . queryBy userName
--- @
---
--- This function can be thought of as a sort of reverse form of 'arr', where the input and output in the resulting 'QueryArr' is swapped around.
--- However, note that @queryBy f@ is not inverse to @arr f@ since neither
-queryBy :: (Generic (rel (Expr s)), Generic (rel ExtractSchema), InjPackMap (Rep (rel (Expr s))), ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))), KnownSymbol (TableName rel))
-        => (rel (Expr s) -> Expr s prim) -> Op.QueryArr (Expr s prim) (rel (Expr s))
-queryBy = queryOnto (==.)
+-- -- | Generate an @INNER JOIN@ directly from a field accessor.
+-- -- This has a similar function to 'queryTable' but with has an input specified, which makes composition of joins easier.
+-- --
+-- -- @
+-- --     listPackagesByUserName :: Text -> Query (Package Expr)
+-- --     listPackagesByUserName = queryBy packageMaintainerId . queryBy userName
+-- -- @
+-- --
+-- -- This function can be thought of as a sort of reverse form of 'arr', where the input and output in the resulting 'QueryArr' is swapped around.
+-- -- However, note that @queryBy f@ is not inverse to @arr f@ since neither
+-- queryBy
+--   :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel))
+--   => (rel (Expr s) -> Expr s prim) -> Op.QueryArr (Expr s prim) (rel (Expr s))
+-- queryBy = queryOnto (==.)
 
--- | A generalization of 'queryBy' taking an arbitrary comparison operator for the join clause.
-queryOnto :: (Generic (rel (Expr s)), Generic (rel ExtractSchema), InjPackMap (Rep (rel (Expr s))), ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))), KnownSymbol (TableName rel))
-          => ((Expr s) prim -> (Expr s) prim -> (Expr s) 'PGBoolean)
-          -> (rel (Expr s) -> (Expr s) prim)
-          -> Op.QueryArr (Expr s prim) (rel (Expr s))
-queryOnto op f = proc a -> do
-  t <- queryTable -< ()
-  restrict -< f t `op` a
-  returnA -< t
+-- -- | A generalization of 'queryBy' taking an arbitrary comparison operator for the join clause.
+-- queryOnto :: (Generic (rel (Expr s)), Generic (rel ExtractSchema), InjPackMap (Rep (rel (Expr s))), ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))), KnownSymbol (TableName rel))
+--           => ((Expr s) prim -> (Expr s) prim -> (Expr s) 'PGBoolean)
+--           -> (rel (Expr s) -> (Expr s) prim)
+--           -> Op.QueryArr (Expr s prim) (rel (Expr s))
+-- queryOnto op f = proc a -> do
+--   t <- queryTable -< ()
+--   restrict -< f t `op` a
+--   returnA -< t
 
 -- | A type class to get the column names out of the record.
 class ColumnView f g where
@@ -157,8 +162,10 @@ instance InjPackMap (K1 i (Expr s colType)) where
 
 -- | 'select' executes a PostgreSQL query as a @SELECT@ statement, returning
 -- data mapped to Haskell values.
-select :: Selectable pg haskell => PG.Connection -> Op.Query pg -> IO [haskell]
-select conn = Op.runQueryExplicit queryRunner conn
+select
+  :: Selectable pg haskell
+  => PG.Connection -> Query s pg -> IO [haskell]
+select conn (Query q) = Op.runQueryExplicit queryRunner conn q
 
 -- A type class for selectable things, so we can return a table or a tuple.
 class Selectable expr haskell | expr -> haskell where
@@ -275,10 +282,11 @@ instance UnpackspecRel (K1 i (Expr s colType)) where
 -- then all columns will be @null@.
 leftJoin :: (ToNull right nullRight)
          => (left -> right -> Expr s 'PGBoolean)
-         -> Op.Query left
-         -> Op.Query right
-         -> Op.Query (left,nullRight)
-leftJoin f l r =
+         -> Query s left
+         -> Query s right
+         -> Query s (left,nullRight)
+leftJoin f (Query l) (Query r) =
+  Query $
   Op.leftJoinExplicit
     undefined
     undefined
@@ -424,9 +432,8 @@ insert1Returning conn row =
 -- | Given a 'Op.Query', filter the rows of the result set according to a
 -- predicate.
 filterQuery
-  :: (a -> Expr s 'PGBoolean) -> Op.Query a -> Op.Query a
-filterQuery f t =
-  fmap snd (first restrict . fmap (f &&& id) t)
+  :: (a -> Expr s 'PGBoolean) -> Query s a -> Query s a
+filterQuery f (Query t) = Query $ fmap snd (first restrict . fmap (f &&& id) t)
 
 --------------------------------------------------------------------------------
 newtype PGOrdering a =
@@ -471,8 +478,9 @@ orderNulls direction nulls f =
             NullsFirst -> Op.NullsFirst
             NullsLast -> Op.NullsLast
 
-orderBy :: PGOrdering a -> Op.Query a -> Op.Query a
-orderBy (PGOrdering f) = Op.orderBy (Op.Order f)
+orderBy
+  :: PGOrdering a -> Query s a -> Query s a
+orderBy (PGOrdering f) (Query q) = Query (Op.orderBy (Op.Order f) q)
 
 {- $intro
 
