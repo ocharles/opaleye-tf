@@ -12,6 +12,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE Arrows #-}
+{-# LANGUAGE CPP #-}
 
 module Opaleye.TF
        ( -- $intro
@@ -25,7 +26,7 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
+         queryTable, joinBy, joinOn, innerJoin, outerJoinBy, outerJoinOn, outerJoin, Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, Op.limit, Op.offset,
 
          -- * Inserting data
@@ -53,21 +54,26 @@ import qualified Database.PostgreSQL.Simple.FromField as PG
 import qualified Database.PostgreSQL.Simple.FromRow as PG
 import GHC.Generics
 import GHC.TypeLits
-import qualified Opaleye.Column as Op
+import qualified Opaleye.Column as Op hiding (toNullable)
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
 import qualified Opaleye.Internal.Order as Op
 import qualified Opaleye.Internal.PackMap as Op
+#if __GLASGOW_HASKELL__ >= 800
+import qualified Opaleye.Internal.PrimQuery as Op (PrimQuery' (Join), JoinType (LeftJoin))
+#else
+import qualified Opaleye.Internal.PrimQuery as Op (PrimQuery (Join), JoinType (LeftJoin))
+#endif
 import qualified Opaleye.Internal.RunQuery as Op
 import qualified Opaleye.Internal.Table as Op
 import qualified Opaleye.Internal.TableMaker as Op
+import qualified Opaleye.Internal.Tag as Op
 import qualified Opaleye.Internal.Unpackspec as Op
-import qualified Opaleye.Join as Op
+import qualified Opaleye.Internal.QueryArr as Op
 import qualified Opaleye.Manipulation as Op
 import qualified Opaleye.Operators as Op
 import qualified Opaleye.Order as Op
-import qualified Opaleye.QueryArr as Op
 import qualified Opaleye.RunQuery as Op
 import Opaleye.TF.BaseTypes
 import Opaleye.TF.Col
@@ -111,19 +117,48 @@ queryTable =
 --
 -- This function can be thought of as a sort of reverse form of 'arr', where the input and output in the resulting 'QueryArr' is swapped around.
 -- However, note that @queryBy f@ is not inverse to @arr f@ since neither
-queryBy :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
-        => (rel Expr -> Expr prim) -> Op.QueryArr (Expr prim) (rel Expr)
-queryBy = queryOnto (==.)
+joinBy :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+        => (rel Expr -> Expr prim)
+        -> Op.QueryArr (Expr prim) (rel Expr)
+joinBy = joinOn (==.)
 
--- | A generalization of 'queryBy' taking an arbitrary comparison operator for the join clause.
-queryOnto :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
-          => (Expr prim -> Expr prim -> Expr 'PGBoolean)
-          -> (rel Expr -> Expr prim)
-          -> Op.QueryArr (Expr prim) (rel Expr)
-queryOnto op f = proc a -> do
-  t <- queryTable -< ()
-  restrict -< f t `op` a
-  returnA -< t
+-- | A generalization of 'joinBy' taking an arbitrary comparison operator for the join clause.
+joinOn :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+       => (Expr prim -> Expr prim -> Expr 'PGBoolean)
+       -> (rel Expr -> Expr prim)
+       -> Op.QueryArr (Expr prim) (rel Expr)
+joinOn op f = innerJoin queryTable (\l r -> l `op` f r)
+
+-- | The most general form of 'joinBy'
+innerJoin :: Op.Query right
+          -> (left -> right -> Expr 'PGBoolean)
+          -> Op.QueryArr left right
+innerJoin q f = proc l -> do
+  r <- q -< ()
+  restrict -< f l r
+  returnA -< r
+
+-- |
+outerJoinBy :: forall (rel :: (k -> *) -> *) prim. (GToNull (Rep (rel Expr)) (Rep (rel (Compose Expr 'Nullable))), Generic (rel Expr), Generic (rel (Compose Expr 'Nullable)), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+        => (rel Expr -> Expr ('Nullable prim))
+        -> Op.QueryArr (Expr prim) (rel (Compose Expr 'Nullable))
+outerJoinBy = outerJoinOn (==.)
+
+-- | A generalization of 'joinBy' taking an arbitrary comparison operator for the join clause.
+outerJoinOn :: forall (rel :: (k -> *) -> *) prim. (GToNull (Rep (rel Expr)) (Rep (rel (Compose Expr 'Nullable))), Generic (rel Expr), Generic (rel (Compose Expr 'Nullable)), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+            => (Expr prim -> Expr prim -> Expr 'PGBoolean)
+            -> (rel Expr -> Expr ('Nullable prim))
+            -> Op.QueryArr (Expr prim) (rel (Compose Expr 'Nullable))
+outerJoinOn op f = outerJoin queryTable (\l r -> nullable (lit False) (\r' -> l `op` r') (f r))
+
+-- | The most general form of 'joinBy'
+outerJoin :: ToNull right nullRight
+          => Op.Query right
+          -> (left -> right -> Expr 'PGBoolean)
+          -> Op.QueryArr left nullRight
+outerJoin q f = proc l -> do
+  t <- leftJoin (\l' r -> f l' r) id q -< l
+  returnA -< snd t
 
 -- | A type class to get the column names out of the record.
 class ColumnView f g where
@@ -274,19 +309,35 @@ instance UnpackspecRel (K1 i (Expr colType)) where
 -- then all columns will be @null@.
 leftJoin :: (ToNull right nullRight)
          => (left -> right -> Expr 'PGBoolean)
-         -> Op.Query left
+         -> Op.QueryArr a left
          -> Op.Query right
-         -> Op.Query (left,nullRight)
+         -> Op.QueryArr a (left,nullRight)
 leftJoin f l r =
-  Op.leftJoinExplicit
-    undefined
-    undefined
+  leftJoinExplicit
     (Op.NullMaker toNull)
     l
     r
     (\(l',r') ->
        case f l' r' of
          Expr prim -> Op.Column prim)
+  where
+    -- This is similar to Op.leftJoinExplicit, but the resulting arrows may receive an input which is applied to the left-hand side query
+    leftJoinExplicit :: Op.NullMaker columnsB nullableColumnsB
+                     -> Op.QueryArr a columnsA
+                     -> Op.Query columnsB
+                     -> ((columnsA, columnsB) -> Op.Column _PGBool)
+                     -> Op.QueryArr a (columnsA, nullableColumnsB)
+    leftJoinExplicit nullmaker qA qB cond = Op.simpleQueryArr q
+      where
+        q (a, startTag) = ((columnsA, nullableColumnsB), primQueryR, Op.next endTag)
+          where
+            (columnsA, primQueryA, midTag) = Op.runSimpleQueryArr qA (a, startTag)
+            (columnsB, primQueryB, endTag) = Op.runSimpleQueryArr qB ((), midTag)
+
+            nullableColumnsB = Op.toNullable nullmaker columnsB
+
+            Op.Column cond' = cond (columnsA, columnsB)
+            primQueryR = Op.Join Op.LeftJoin cond' primQueryA primQueryB
 
 class ToNull expr exprNull | expr -> exprNull where
   toNull :: expr -> exprNull
