@@ -118,7 +118,8 @@ queryTable =
 -- This function can be thought of as a sort of reverse form of 'arr', where the input and output in the resulting 'QueryArr' is swapped around.
 -- However, note that @queryBy f@ is not inverse to @arr f@ since neither
 joinBy :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
-        => (rel Expr -> Expr prim) -> Op.QueryArr (Expr prim) (rel Expr)
+        => (rel Expr -> Expr prim)
+        -> Op.QueryArr (Expr prim) (rel Expr)
 joinBy = joinOn (==.)
 
 -- | A generalization of 'joinBy' taking an arbitrary comparison operator for the join clause.
@@ -139,15 +140,16 @@ innerJoin q f = proc l -> do
 
 -- |
 outerJoinBy :: forall (rel :: (k -> *) -> *) prim. (GToNull (Rep (rel Expr)) (Rep (rel (Compose Expr 'Nullable))), Generic (rel Expr), Generic (rel (Compose Expr 'Nullable)), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
-        => (rel Expr -> Expr prim) -> Op.QueryArr (Expr prim) (rel (Compose Expr 'Nullable))
+        => (rel Expr -> Expr ('Nullable prim))
+        -> Op.QueryArr (Expr prim) (rel (Compose Expr 'Nullable))
 outerJoinBy = outerJoinOn (==.)
 
 -- | A generalization of 'joinBy' taking an arbitrary comparison operator for the join clause.
 outerJoinOn :: forall (rel :: (k -> *) -> *) prim. (GToNull (Rep (rel Expr)) (Rep (rel (Compose Expr 'Nullable))), Generic (rel Expr), Generic (rel (Compose Expr 'Nullable)), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
             => (Expr prim -> Expr prim -> Expr 'PGBoolean)
-            -> (rel Expr -> Expr prim)
+            -> (rel Expr -> Expr ('Nullable prim))
             -> Op.QueryArr (Expr prim) (rel (Compose Expr 'Nullable))
-outerJoinOn op f = outerJoin queryTable (\l r -> l `op` f r)
+outerJoinOn op f = outerJoin queryTable (\l r -> nullable (lit False) (\r' -> l `op` r') (f r))
 
 -- | The most general form of 'joinBy'
 outerJoin :: ToNull right nullRight
