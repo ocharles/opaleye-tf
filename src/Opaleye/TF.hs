@@ -40,6 +40,7 @@ module Opaleye.TF
          )
        where
 
+import Opaleye.TF.Scope (Scope(Z))
 import Control.Applicative
 import Control.Arrow (first, (&&&), returnA)
 import Control.Category ((.), id)
@@ -87,9 +88,9 @@ import Prelude hiding (null, (.), id, not)
 -- | 'queryTable' moves from 'Table' to 'Expr'. Accessing the fields of your
 -- table record will now give you expressions to view data in the individual
 -- columns.
-queryTable :: forall (rel :: (k -> *) -> *).
-              (Generic (rel ExtractSchema),Generic (rel Expr), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
-           => Op.Query (rel Expr)
+queryTable :: forall (rel :: (k -> *) -> *) s.
+              (Generic (rel ExtractSchema),Generic (rel (Expr s)), InjPackMap (Rep (rel (Expr s))), ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))), KnownSymbol (TableName rel))
+           => Op.Query (rel (Expr s))
 queryTable =
   Op.queryTableExplicit
     columnMaker
@@ -111,15 +112,15 @@ queryTable =
 --
 -- This function can be thought of as a sort of reverse form of 'arr', where the input and output in the resulting 'QueryArr' is swapped around.
 -- However, note that @queryBy f@ is not inverse to @arr f@ since neither
-queryBy :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
-        => (rel Expr -> Expr prim) -> Op.QueryArr (Expr prim) (rel Expr)
+queryBy :: (Generic (rel (Expr s)), Generic (rel ExtractSchema), InjPackMap (Rep (rel (Expr s))), ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))), KnownSymbol (TableName rel))
+        => (rel (Expr s) -> Expr s prim) -> Op.QueryArr (Expr s prim) (rel (Expr s))
 queryBy = queryOnto (==.)
 
 -- | A generalization of 'queryBy' taking an arbitrary comparison operator for the join clause.
-queryOnto :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
-          => (Expr prim -> Expr prim -> Expr 'PGBoolean)
-          -> (rel Expr -> Expr prim)
-          -> Op.QueryArr (Expr prim) (rel Expr)
+queryOnto :: (Generic (rel (Expr s)), Generic (rel ExtractSchema), InjPackMap (Rep (rel (Expr s))), ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))), KnownSymbol (TableName rel))
+          => ((Expr s) prim -> (Expr s) prim -> (Expr s) 'PGBoolean)
+          -> (rel (Expr s) -> (Expr s) prim)
+          -> Op.QueryArr (Expr s prim) (rel (Expr s))
 queryOnto op f = proc a -> do
   t <- queryTable -< ()
   restrict -< f t `op` a
@@ -135,7 +136,7 @@ instance ColumnView f f' => ColumnView (M1 i c f) (M1 i c f') where
 instance (ColumnView f f', ColumnView g g') => ColumnView (f :*: g) (f' :*: g') where
   columnViewRep _ = columnViewRep (Proxy :: Proxy f) :*: columnViewRep (Proxy :: Proxy g)
 
-instance KnownSymbol columnName => ColumnView (K1 i (Proxy columnName)) (K1 i (Expr colType)) where
+instance KnownSymbol columnName => ColumnView (K1 i (Proxy columnName)) (K1 i (Expr s colType)) where
   columnViewRep _ = K1 (Expr (Op.BaseTableAttrExpr (symbolVal (Proxy :: Proxy columnName))))
 
 -- A type to generate that weird PackMap thing queryTableExplicit wants.
@@ -149,7 +150,7 @@ instance InjPackMap f => InjPackMap (M1 i c f) where
 instance (InjPackMap f, InjPackMap g) => InjPackMap (f :*: g) where
   injPackMap f (a :*: b) = liftA2 (:*:) (injPackMap f a) (injPackMap f b)
 
-instance InjPackMap (K1 i (Expr colType)) where
+instance InjPackMap (K1 i (Expr s colType)) where
   injPackMap f (K1 (Expr prim)) = fmap (K1 . Expr) (f prim)
 
 --------------------------------------------------------------------------------
@@ -163,18 +164,18 @@ select conn = Op.runQueryExplicit queryRunner conn
 class Selectable expr haskell | expr -> haskell where
   queryRunner :: Op.QueryRunner expr haskell
 
-instance (haskell ~ Col Interpret t, PG.FromField haskell) => Selectable (Expr t) haskell where
+instance (haskell ~ Col Interpret t, PG.FromField haskell) => Selectable (Expr s t) haskell where
   queryRunner = lmap (\(Expr a) -> Op.Column a) (Op.queryRunner Op.fieldQueryRunnerColumn)
 
 -- A scary instance for interpreting Expr to Haskell types generically.
-instance (Generic (rel Expr),ParseRelRep (Rep (rel Expr)) (Rep (rel Interpret)),Generic (rel Interpret),UnpackspecRel (Rep (rel Expr)), HasFields (Rep (rel Expr))) =>
-           Selectable (rel Expr) (rel Interpret) where
+instance (Generic (rel (Expr s)),ParseRelRep (Rep (rel (Expr s))) (Rep (rel Interpret)),Generic (rel Interpret),UnpackspecRel (Rep (rel (Expr s))), HasFields (Rep (rel (Expr s)))) =>
+           Selectable (rel (Expr s)) (rel Interpret) where
   queryRunner = gqueryRunner
 
 -- The same instance but for left joins.
-instance (Generic (rel (Compose Expr 'Nullable)),ParseRelRep (Rep (rel (Compose Expr 'Nullable))) (Rep (rel (Compose Interpret 'Nullable))),Generic (rel (Compose Interpret 'Nullable)),UnpackspecRel (Rep (rel (Compose Expr 'Nullable))), Generic (rel Interpret), DistributeMaybe (rel (Compose Interpret 'Nullable)) (rel Interpret), HasFields (Rep (rel (Compose Expr 'Nullable)))) =>
-           Selectable (rel (Compose Expr 'Nullable)) (Maybe (rel Interpret)) where
-  queryRunner = fmap distributeMaybe (gqueryRunner :: Op.QueryRunner (rel (Compose Expr 'Nullable)) (rel (Compose Interpret 'Nullable)))
+instance (Generic (rel (Compose (Expr s) 'Nullable)),ParseRelRep (Rep (rel (Compose (Expr s) 'Nullable))) (Rep (rel (Compose Interpret 'Nullable))),Generic (rel (Compose Interpret 'Nullable)),UnpackspecRel (Rep (rel (Compose (Expr s) 'Nullable))), Generic (rel Interpret), DistributeMaybe (rel (Compose Interpret 'Nullable)) (rel Interpret), HasFields (Rep (rel (Compose (Expr s) 'Nullable)))) =>
+           Selectable (rel (Compose (Expr s) 'Nullable)) (Maybe (rel Interpret)) where
+  queryRunner = fmap distributeMaybe (gqueryRunner :: Op.QueryRunner (rel (Compose (Expr s) 'Nullable)) (rel (Compose Interpret 'Nullable)))
 
 -- This lets us turn a record of Maybe's into a Maybe of fields.
 class DistributeMaybe x y | x -> y where
@@ -251,7 +252,7 @@ instance ParseRelRep f f' => ParseRelRep (M1 i c f) (M1 i c f') where
 instance (ParseRelRep f f', ParseRelRep g g') => ParseRelRep (f :*: g) (f' :*: g') where
   parseRelRep (a :*: b) = liftA2 (:*:) (parseRelRep a) (parseRelRep b)
 
-instance (haskell ~ Col Interpret colType, PG.FromField haskell) => ParseRelRep (K1 i (Expr colType)) (K1 i haskell) where
+instance (haskell ~ Col Interpret colType, PG.FromField haskell) => ParseRelRep (K1 i (Expr s colType)) (K1 i haskell) where
   parseRelRep (K1 _) = fmap K1 PG.field
 
 class UnpackspecRel rep where
@@ -263,7 +264,7 @@ instance UnpackspecRel f => UnpackspecRel (M1 i c f) where
 instance (UnpackspecRel a, UnpackspecRel b) => UnpackspecRel (a :*: b) where
   unpackRel inj (a :*: b) = unpackRel inj a *> unpackRel inj b
 
-instance UnpackspecRel (K1 i (Expr colType)) where
+instance UnpackspecRel (K1 i (Expr s colType)) where
   unpackRel inj (K1 (Expr prim)) = void (inj prim)
 
 --------------------------------------------------------------------------------
@@ -273,7 +274,7 @@ instance UnpackspecRel (K1 i (Expr colType)) where
 -- more rows in the right query. If the join matches no rows in the right table,
 -- then all columns will be @null@.
 leftJoin :: (ToNull right nullRight)
-         => (left -> right -> Expr 'PGBoolean)
+         => (left -> right -> Expr s 'PGBoolean)
          -> Op.Query left
          -> Op.Query right
          -> Op.Query (left,nullRight)
@@ -291,7 +292,7 @@ leftJoin f l r =
 class ToNull expr exprNull | expr -> exprNull where
   toNull :: expr -> exprNull
 
-instance (GToNull (Rep (rel Expr)) (Rep (rel (Compose Expr 'Nullable))), Generic (rel Expr), Generic (rel (Compose Expr 'Nullable))) => ToNull (rel Expr) (rel (Compose Expr 'Nullable)) where
+instance (GToNull (Rep (rel (Expr s))) (Rep (rel (Compose (Expr s) 'Nullable))), Generic (rel (Expr s)), Generic (rel (Compose (Expr s) 'Nullable))) => ToNull (rel (Expr s)) (rel (Compose (Expr s) 'Nullable)) where
   toNull = to . gtoNull . from
 
 class GToNull f g | f -> g where
@@ -303,41 +304,41 @@ instance GToNull f f' => GToNull (M1 i c f) (M1 i c f') where
 instance (GToNull f f', GToNull g g') => GToNull (f :*: g) (f' :*: g') where
   gtoNull (f :*: g) = gtoNull f :*: gtoNull g
 
-instance (t' ~ Col (Compose Expr 'Nullable) t, t' ~ Expr x) => GToNull (K1 i (Expr t)) (K1 i t') where
+instance (t' ~ Col (Compose (Expr s) 'Nullable) t, t' ~ (Expr s) x) => GToNull (K1 i (Expr s t)) (K1 i t') where
   gtoNull (K1 (Expr prim)) = K1 (Expr prim)
 
 --------------------------------------------------------------------------------
 
 -- | Apply a @WHERE@ restriction to a table.
-restrict :: Op.QueryArr (Expr 'PGBoolean) ()
+restrict :: Op.QueryArr (Expr s 'PGBoolean) ()
 restrict = lmap (\(Expr prim) -> Op.Column prim) Op.restrict
 
 -- | The PostgreSQL @=@ operator.
-(==.) :: Expr a -> Expr a -> Expr 'PGBoolean
+(==.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a ==. Expr b =
   case Op.Column a Op..== Op.Column b of
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @OR@ operator.
-(||.) :: Expr a -> Expr a -> Expr 'PGBoolean
+(||.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a ||. Expr b =
   case Op.Column a Op..|| Op.Column b of
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @ILIKE@ operator.
-ilike :: Expr 'PGText -> Expr 'PGText -> Expr 'PGBoolean
+ilike :: Expr s 'PGText -> Expr s 'PGText -> Expr s 'PGBoolean
 Expr a `ilike` Expr b =
   case Op.binOp (Op.OpOther "ILIKE") (Op.Column a) (Op.Column b) of
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @IS NULL@ operator
-isNull :: Expr ('Nullable a) -> Expr 'PGBoolean
+isNull :: Expr s ('Nullable a) -> Expr s 'PGBoolean
 isNull (Expr a) =
   case Op.isNull (Op.Column a) of
     Op.Column b -> Expr b
 
 -- | The PostgreSQL @NOT@ operator
-not :: Expr 'PGBoolean -> Expr 'PGBoolean
+not :: Expr s 'PGBoolean -> Expr s 'PGBoolean
 not (Expr a) =
   case Op.not (Op.Column a) of
     Op.Column b -> Expr b
@@ -371,7 +372,7 @@ instance (GWriter f f',GWriter g g') => GWriter (f :*: g) (f' :*: g') where
           fst
           (gwriter (Proxy :: Proxy f) ***! gwriter (Proxy :: Proxy g))
 
-instance KnownSymbol columnName => GWriter (K1 i (Proxy columnName)) (K1 i (Default (Expr t))) where
+instance KnownSymbol columnName => GWriter (K1 i (Proxy columnName)) (K1 i (Default (Expr s t))) where
   gwriter _ =
     dimap (\(K1 def) ->
              case def of
@@ -380,7 +381,7 @@ instance KnownSymbol columnName => GWriter (K1 i (Proxy columnName)) (K1 i (Defa
           (const ())
           (Op.required (symbolVal (Proxy :: Proxy columnName)))
 
-instance KnownSymbol columnName => GWriter (K1 i (Proxy columnName)) (K1 i (Expr t)) where
+instance KnownSymbol columnName => GWriter (K1 i (Proxy columnName)) (K1 i (Expr s t)) where
   gwriter _ =
     dimap (\(K1 (Expr e)) -> Op.Column e)
           (const ())
@@ -401,12 +402,12 @@ insert conn rows =
 -- have default values.
 insert1Returning
   :: forall rel.
-     (Insertable (rel Insertion),Selectable (rel Expr) (rel Interpret),ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)),Generic (rel Expr))
+     (Insertable (rel Insertion),Selectable (rel (Expr 'Z)) (rel Interpret),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr 'Z))),Generic (rel (Expr 'Z)))
   => PG.Connection -> rel Insertion -> IO (rel Interpret)
 insert1Returning conn row =
   fmap head
        (Op.runInsertReturningExplicit
-          (queryRunner :: Op.QueryRunner (rel Expr) (rel Interpret))
+          (queryRunner :: Op.QueryRunner (rel (Expr 'Z)) (rel Interpret))
           conn
           (case insertTable [row] of
              Op.Table tableName props -> Op.Table tableName (remapProps props)
@@ -423,7 +424,7 @@ insert1Returning conn row =
 -- | Given a 'Op.Query', filter the rows of the result set according to a
 -- predicate.
 filterQuery
-  :: (a -> Expr 'PGBoolean) -> Op.Query a -> Op.Query a
+  :: (a -> Expr s 'PGBoolean) -> Op.Query a -> Op.Query a
 filterQuery f t =
   fmap snd (first restrict . fmap (f &&& id) t)
 
@@ -432,14 +433,14 @@ newtype PGOrdering a =
   PGOrdering (a -> [(Op.OrderOp,Op.PrimExpr)])
   deriving (Monoid)
 
-asc :: (a -> Expr (b :: PGType)) -> PGOrdering a
+asc :: (a -> Expr s (b :: PGType)) -> PGOrdering a
 asc f =
   PGOrdering
     (\x ->
        case f x of
          Expr a -> [(Op.OrderOp Op.OpAsc Op.NullsFirst,a)])
 
-desc :: (a -> Expr (b :: PGType)) -> PGOrdering a
+desc :: (a -> Expr s (b :: PGType)) -> PGOrdering a
 desc f =
   PGOrdering
     (\x ->
@@ -451,15 +452,15 @@ data OrderNulls
   | NullsLast
   deriving (Enum,Ord,Eq,Read,Show,Bounded)
 
-orderNulls :: forall a b.
-              (forall (x :: PGType). (a -> Expr x) -> PGOrdering a)
+orderNulls :: forall a b s.
+              (forall (x :: PGType). (a -> Expr s x) -> PGOrdering a)
            -> OrderNulls
-           -> (a -> Expr ('Nullable (b :: PGType)))
+           -> (a -> Expr s ('Nullable (b :: PGType)))
            -> PGOrdering a
 orderNulls direction nulls f =
   case direction (\a ->
                     case f a of
-                      Expr x -> Expr x :: Expr b) of
+                      Expr x -> Expr x :: Expr s b) of
     PGOrdering g ->
       PGOrdering
         (\a ->

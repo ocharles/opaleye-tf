@@ -17,7 +17,7 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Opaleye.TF, Opaleye.TF.BaseTypes, Opaleye.TF.Machinery, Opaleye.TF.Default, Opaleye.TF.Nullable, Opaleye.TF.Col, Opaleye.TF.Lit, Opaleye.TF.Expr, Opaleye.TF.Interpretation, Opaleye.TF.Insert, Opaleye.TF.Table
+  exposed-modules:     Opaleye.TF, Opaleye.TF.BaseTypes, Opaleye.TF.Machinery, Opaleye.TF.Default, Opaleye.TF.Nullable, Opaleye.TF.Col, Opaleye.TF.Lit, Opaleye.TF.Expr, Opaleye.TF.Interpretation, Opaleye.TF.Insert, Opaleye.TF.Table, Opaleye.TF.Scope
   -- other-modules:       
   other-extensions:    DataKinds, PolyKinds, OverloadedStrings, RankNTypes, ScopedTypeVariables, GeneralizedNewtypeDeriving, TypeOperators, FunctionalDependencies, ConstraintKinds, FlexibleContexts, FlexibleInstances, DeriveGeneric, DefaultSignatures, TypeFamilies, UndecidableInstances, StandaloneDeriving, Arrows
   build-depends:       base >=4.8 && <4.10, transformers >=0.4 && <0.6, opaleye, product-profunctors, profunctors, postgresql-simple, time, text, bytestring

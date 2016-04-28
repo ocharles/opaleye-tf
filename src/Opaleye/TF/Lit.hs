@@ -16,8 +16,8 @@ import Opaleye.TF.Nullable
 import Prelude hiding (null)
 
 class Lit (exprType :: k) where
-  lit :: Col Interpret exprType -> Expr exprType
+  lit :: Col Interpret exprType -> Expr s exprType
 
 instance (Maybe (Col Interpret a) ~ Col Interpret ('Nullable a),Lit a) => Lit ('Nullable a) where
-  lit (Just haskell) = mapExpr Cast (lit haskell :: Expr a)
+  lit (Just haskell) = mapExpr Cast (lit haskell :: Expr s a)
   lit Nothing = null

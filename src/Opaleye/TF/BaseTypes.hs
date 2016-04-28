@@ -73,7 +73,7 @@ data PGType
   | PGUUID                   -- ^ @uuid@
   | PGXML                    -- ^ @xml@
 
-type instance Col Expr (t :: PGType) = Expr t
+type instance Col (Expr s) (t :: PGType) = Expr s t
 
 type instance Col Interpret 'PGBigint = Int64
 type instance Col Interpret 'PGBoolean = Bool
@@ -115,5 +115,5 @@ instance Lit ('PGTimestamp 'WithTimeZone) where
 instance Lit 'PGDouble where
   lit = Expr . Op.unColumn . Op.pgDouble
 
-pgNow :: Expr ('PGTimestamp 'WithTimeZone)
-pgNow = mapExpr Cast (lit (pack "now") :: Expr 'PGText)
+pgNow :: Expr s ('PGTimestamp 'WithTimeZone)
+pgNow = mapExpr Cast (lit (pack "now") :: Expr s 'PGText)

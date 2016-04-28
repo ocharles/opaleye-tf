@@ -15,8 +15,8 @@ data PGDefault t
   = HasDefault t
   | NoDefault t
 
-type instance Col Expr ('HasDefault col) = Col Expr col
-type instance Col Expr ('NoDefault col) = Col Expr col
+type instance Col (Expr s) ('HasDefault col) = Col (Expr s) col
+type instance Col (Expr s) ('NoDefault col) = Col (Expr s) col
 type instance Col Interpret ('HasDefault col) = Col Interpret col
 type instance Col Interpret ('NoDefault col) = Col Interpret col
 type instance Col Insertion ('HasDefault col) = Col InsertionWithDefault col

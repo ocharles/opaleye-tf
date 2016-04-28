@@ -7,8 +7,9 @@
 module Opaleye.TF.Expr where
 
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
+import Opaleye.TF.Scope
 
-newtype Expr (columnType :: k) = Expr Op.PrimExpr
+newtype Expr (s :: Scope) (columnType :: k) = Expr Op.PrimExpr
 
 type family ExprType (f :: j -> *) (col :: k) :: *
 
@@ -17,6 +18,6 @@ data a ~> b
   = Cast   -- ^ This 'function' is simply a cast between expressions.
   | Id
 
-mapExpr :: (a ~> b) -> Expr a -> Expr b
+mapExpr :: (a ~> b) -> Expr s a -> Expr s b
 mapExpr Cast (Expr a) = Expr a
 mapExpr Id (Expr a) = Expr a
