@@ -26,7 +26,7 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryBy, queryOnto, Expr, select, leftJoin, restrict, (==.), (/=.), (<.), (<=.), (>.), (>=.),(||.), ilike, isNull, not,
+         queryTable, joinBy, joinOn, innerJoin, outerJoinBy, outerJoinOn, outerJoin, Expr, select, leftJoin, restrict, (==.), (/=.), (<.), (<=.), (>.), (>=.),(||.), ilike, isNull, not,
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, Op.limit, Op.offset,
 
          -- * Inserting data
@@ -117,19 +117,46 @@ queryTable =
 --
 -- This function can be thought of as a sort of reverse form of 'arr', where the input and output in the resulting 'QueryArr' is swapped around.
 -- However, note that @queryBy f@ is not inverse to @arr f@ since neither
-queryBy :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+joinBy :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
         => (rel Expr -> Expr prim) -> Op.QueryArr (Expr prim) (rel Expr)
-queryBy = queryOnto (==.)
+joinBy = joinOn (==.)
 
--- | A generalization of 'queryBy' taking an arbitrary comparison operator for the join clause.
-queryOnto :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
-          => (Expr prim -> Expr prim -> Expr 'PGBoolean)
-          -> (rel Expr -> Expr prim)
-          -> Op.QueryArr (Expr prim) (rel Expr)
-queryOnto op f = proc a -> do
-  t <- queryTable -< ()
-  restrict -< f t `op` a
-  returnA -< t
+-- | A generalization of 'joinBy' taking an arbitrary comparison operator for the join clause.
+joinOn :: forall (rel :: (k -> *) -> *) prim. (Generic (rel Expr), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+       => (Expr prim -> Expr prim -> Expr 'PGBoolean)
+       -> (rel Expr -> Expr prim)
+       -> Op.QueryArr (Expr prim) (rel Expr)
+joinOn op f = innerJoin queryTable (\l r -> l `op` f r)
+
+-- | The most general form of 'joinBy'
+innerJoin :: Op.Query right
+          -> (left -> right -> Expr 'PGBoolean)
+          -> Op.QueryArr left right
+innerJoin q f = proc l -> do
+  r <- q -< ()
+  restrict -< f l r
+  returnA -< r
+
+-- |
+outerJoinBy :: forall (rel :: (k -> *) -> *) prim. (GToNull (Rep (rel Expr)) (Rep (rel (Compose Expr 'Nullable))), Generic (rel Expr), Generic (rel (Compose Expr 'Nullable)), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+        => (rel Expr -> Expr prim) -> Op.QueryArr (Expr prim) (rel (Compose Expr 'Nullable))
+outerJoinBy = outerJoinOn (==.)
+
+-- | A generalization of 'joinBy' taking an arbitrary comparison operator for the join clause.
+outerJoinOn :: forall (rel :: (k -> *) -> *) prim. (GToNull (Rep (rel Expr)) (Rep (rel (Compose Expr 'Nullable))), Generic (rel Expr), Generic (rel (Compose Expr 'Nullable)), Generic (rel ExtractSchema), InjPackMap (Rep (rel Expr)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel Expr)), KnownSymbol (TableName rel))
+            => (Expr prim -> Expr prim -> Expr 'PGBoolean)
+            -> (rel Expr -> Expr prim)
+            -> Op.QueryArr (Expr prim) (rel (Compose Expr 'Nullable))
+outerJoinOn op f = outerJoin queryTable (\l r -> l `op` f r)
+
+-- | The most general form of 'joinBy'
+outerJoin :: ToNull right nullRight
+          => Op.Query right
+          -> (left -> right -> Expr 'PGBoolean)
+          -> Op.QueryArr left nullRight
+outerJoin q f = proc l -> do
+  t <- leftJoin (\l' r -> f l' r) id q -< l
+  returnA -< snd t
 
 -- | A type class to get the column names out of the record.
 class ColumnView f g where
