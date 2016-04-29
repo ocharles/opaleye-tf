@@ -27,7 +27,7 @@ module Opaleye.TF
          -- * Querying tables
          queryTable, {- queryBy, queryOnto, -}Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, Op.limit, Op.offset,
-         leftJoinTableOn,
+         leftJoinTableOn, leftJoinOn,
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
@@ -110,11 +110,18 @@ leftJoinTableOn
   :: (Generic (rel ExtractSchema),Generic (rel (Expr s)),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel),Generic (rel (Compose (Expr s) 'Nullable)),GToNull (Rep (rel (Expr s))) (Rep (rel (Compose (Expr s) 'Nullable))))
   => (rel (Expr s) -> Expr s 'PGBoolean)
   -> Query s (rel (Compose (Expr s) 'Nullable))
-leftJoinTableOn predicate =
+leftJoinTableOn predicate = leftJoinOn predicate queryTable
+
+-- TODO Is it really sound to use the same scope here? Perhaps requires
+-- LATERAL joins.
+leftJoinOn
+  :: ToNull a maybeA
+  => (a -> Expr s 'PGBoolean) -> Query s a -> Query s maybeA
+leftJoinOn predicate q =
   Query $
   Op.QueryArr $
   \((),left,t) ->
-    case queryTable of
+    case q of
       Query (Op.QueryArr f) ->
         case f ((),PQ.Unit,t) of
           (rightRel,pqR,t') ->
