@@ -24,6 +24,8 @@ import Opaleye.TF.Col
 import Opaleye.TF.Expr
 import Opaleye.TF.Interpretation
 import Opaleye.TF.Lit
+import Opaleye.TF.Nullable
+import Opaleye.TF.Machinery
 
 data WithTimeZone
   = WithTimeZone
@@ -74,6 +76,8 @@ data PGType
   | PGXML                    -- ^ @xml@
 
 type instance Col (Expr s) (t :: PGType) = Expr s t
+type instance Col (Compose (Expr s) 'Nullable) (a :: PGType) = Expr s ('Nullable a)
+type instance Col (Compose (Expr s) 'NotNullable) (a :: PGType) = Expr s a
 
 type instance Col Interpret 'PGBigint = Int64
 type instance Col Interpret 'PGBoolean = Bool

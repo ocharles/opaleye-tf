@@ -35,21 +35,22 @@ toNullable (Expr a) = Expr a
 null :: Expr s ('Nullable a)
 null = Expr (Op.ConstExpr Op.NullLit)
 
-type instance Col (Expr s) ('NotNullable col) = Col (Expr s) col
-type instance Col (Expr s) ('Nullable col) = Expr s ('Nullable col)
-type instance Col Interpret ('NotNullable col) = Col Interpret col
-type instance Col Interpret ('Nullable col) = Maybe (Col Interpret col)
-type instance Col Insertion (col :: PGNull k) = Col (Expr 'Z) col
-type instance Col InsertionWithDefault (col :: PGNull k) = Default (Col (Expr 'Z) col)
-type instance Col (Compose (Expr s) 'Nullable) ('Nullable col) = Expr s ('Nullable col)
-type instance Col (Compose (Expr s) 'Nullable) ('NotNullable col) = Expr s ('Nullable col)
+
 type instance Col (Compose (Expr s) 'Nullable) ('HasDefault col) = Col (Compose (Expr s) 'Nullable) col
 type instance Col (Compose (Expr s) 'Nullable) ('NoDefault col) = Col (Compose (Expr s) 'Nullable) col
+type instance Col (Compose (Expr s) 'Nullable) ('NotNullable col) = Expr s ('Nullable col)
+type instance Col (Compose (Expr s) 'Nullable) ('Nullable col) = Expr s ('Nullable col)
 
 type instance Col (Compose Interpret 'Nullable) ('HasDefault col) = Col (Compose Interpret 'Nullable) col
 type instance Col (Compose Interpret 'Nullable) ('NoDefault col) = Col (Compose Interpret 'Nullable) col
 type instance Col (Compose Interpret 'Nullable) ('NotNullable col) = Col Interpret ('Nullable col)
 type instance Col (Compose Interpret 'Nullable) ('Nullable col) = Col Interpret ('Nullable col)
+type instance Col (Expr s) ('NotNullable col) = Col (Expr s) col
+type instance Col (Expr s) ('Nullable col) = Expr s ('Nullable col)
+type instance Col Insertion (col :: PGNull k) = Col (Expr 'Z) col
+type instance Col InsertionWithDefault (col :: PGNull k) = Default (Col (Expr 'Z) col)
+type instance Col Interpret ('NotNullable col) = Col Interpret col
+type instance Col Interpret ('Nullable col) = Maybe (Col Interpret col)
 
 -- | Eliminate 'PGNull' from the type of an 'Expr'. Like 'maybe' for Haskell
 -- values.
