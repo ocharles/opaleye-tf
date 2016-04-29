@@ -60,6 +60,7 @@ import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
 import qualified Opaleye.Internal.Order as Op
 import qualified Opaleye.Internal.PackMap as Op
+import qualified Opaleye.Internal.QueryArr as Op
 import qualified Opaleye.Internal.RunQuery as Op
 import qualified Opaleye.Internal.Table as Op
 import qualified Opaleye.Internal.TableMaker as Op
@@ -68,7 +69,6 @@ import qualified Opaleye.Join as Op
 import qualified Opaleye.Manipulation as Op
 import qualified Opaleye.Operators as Op
 import qualified Opaleye.Order as Op
-import qualified Opaleye.QueryArr as Op
 import qualified Opaleye.RunQuery as Op
 import Opaleye.TF.BaseTypes
 import Opaleye.TF.Col
@@ -85,6 +85,23 @@ import Prelude hiding (null, (.), id, not)
 
 --------------------------------------------------------------------------------
 newtype Query (s :: Scope) a = Query (Op.Query a)
+
+instance Functor (Query s) where
+  fmap f (Query q) = Query (fmap f q)
+
+instance Applicative (Query s) where
+  pure a = Query (pure a)
+  Query a <*> Query b = Query (a <*> b)
+
+instance Monad (Query s) where
+  return = pure
+  Query (Op.QueryArr x) >>= f =
+    Query (Op.QueryArr
+             (\((),pq,t) ->
+                case x ((),pq,t) of
+                  (x',pq',t') ->
+                    case f x' of
+                      Query (Op.QueryArr y) -> y ((),pq',t')))
 
 --------------------------------------------------------------------------------
 
