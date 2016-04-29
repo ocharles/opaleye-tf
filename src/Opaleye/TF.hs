@@ -27,6 +27,7 @@ module Opaleye.TF
          -- * Querying tables
          queryTable, {- queryBy, queryOnto, -}Expr, select, leftJoin, restrict, (==.), (||.), ilike, isNull, not,
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, Op.limit, Op.offset,
+         leftJoinTableOn,
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
@@ -40,7 +41,6 @@ module Opaleye.TF
          )
        where
 
-import Opaleye.TF.Scope (Scope(Z))
 import Control.Applicative
 import Control.Arrow (first, (&&&))
 import Control.Category ((.), id)
@@ -60,6 +60,7 @@ import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
 import qualified Opaleye.Internal.Order as Op
 import qualified Opaleye.Internal.PackMap as Op
+import qualified Opaleye.Internal.PrimQuery as PQ
 import qualified Opaleye.Internal.QueryArr as Op
 import qualified Opaleye.Internal.RunQuery as Op
 import qualified Opaleye.Internal.Table as Op
@@ -79,6 +80,7 @@ import Opaleye.TF.Interpretation
 import Opaleye.TF.Lit
 import Opaleye.TF.Machinery
 import Opaleye.TF.Nullable
+import Opaleye.TF.Scope (Scope(Z))
 import Opaleye.TF.Table
 import qualified Opaleye.Table as Op hiding (required)
 import Prelude hiding (null, (.), id, not)
@@ -102,6 +104,27 @@ instance Monad (Query s) where
                   (x',pq',t') ->
                     case f x' of
                       Query (Op.QueryArr y) -> y ((),pq',t')))
+
+--------------------------------------------------------------------------------
+leftJoinTableOn
+  :: (Generic (rel ExtractSchema),Generic (rel (Expr s)),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel),Generic (rel (Compose (Expr s) 'Nullable)),GToNull (Rep (rel (Expr s))) (Rep (rel (Compose (Expr s) 'Nullable))))
+  => (rel (Expr s) -> Expr s 'PGBoolean)
+  -> Query s (rel (Compose (Expr s) 'Nullable))
+leftJoinTableOn predicate =
+  Query $
+  Op.QueryArr $
+  \((),left,t) ->
+    case queryTable of
+      Query (Op.QueryArr f) ->
+        case f ((),PQ.Unit,t) of
+          (rightRel,pqR,t') ->
+            (toNull rightRel
+            ,PQ.Join PQ.LeftJoin
+                     (case predicate rightRel of
+                        Expr a -> a)
+                     left
+                     pqR
+            ,t')
 
 --------------------------------------------------------------------------------
 
