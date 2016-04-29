@@ -204,7 +204,7 @@ instance InjPackMap (K1 i (Expr s colType)) where
 -- data mapped to Haskell values.
 select
   :: Selectable pg haskell
-  => PG.Connection -> Query s pg -> IO [haskell]
+  => PG.Connection -> Query 'Z pg -> IO [haskell]
 select conn (Query q) = Op.runQueryExplicit queryRunner conn q
 
 -- A type class for selectable things, so we can return a table or a tuple.
