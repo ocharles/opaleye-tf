@@ -26,7 +26,7 @@ module Opaleye.TF
 
          -- * Querying tables
          queryTable, {- queryBy, queryOnto, -}Expr, select, leftJoin, restrict, (==.), (/=.), (<.), (<=.), (>.), (>=.),(||.), ilike, isNull, not,
-         filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, Op.limit, Op.offset,
+         filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
 
          -- * Inserting data
@@ -563,6 +563,14 @@ orderNulls direction nulls f =
 orderBy
   :: PGOrdering a -> Query s a -> Query s a
 orderBy (PGOrdering f) (Query q) = Query (Op.orderBy (Op.Order f) q)
+
+limit
+  :: Int -> Query s a -> Query s a
+limit n (Query q) = Query (Op.limit n q)
+
+offset
+  :: Int -> Query s a -> Query s a
+offset n (Query q) = Query (Op.offset n q)
 
 {- $intro
 
