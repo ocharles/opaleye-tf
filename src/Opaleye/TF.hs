@@ -33,7 +33,7 @@ module Opaleye.TF
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
 
          -- * TODO Organize
-         Op.Query, Op.QueryArr,
+         Query,
 
          -- * Implementation details
          Compose(..), Interpret, Selectable, Insertable, ColumnView, queryRunner
