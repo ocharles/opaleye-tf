@@ -31,7 +31,7 @@ module Opaleye.TF
          PGEq(..), PGOrd(..),
 
          -- ** Aggregation
-         Aggregate(..), aggregate, count, groupBy, PGMax(max), PGMin(min),
+         Aggregate(..), aggregate, count, groupBy, PGMax(max), PGMin(min), mapAggregate,
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
@@ -691,6 +691,10 @@ instance PGOrd (a :: PGType) where
   Expr a >=. Expr b =
     case Op.binOp Op.OpGtEq (Op.Column a) (Op.Column b) of
       Op.Column c -> Expr c
+
+--------------------------------------------------------------------------------
+mapAggregate :: a ~> b -> Aggregate s a -> Aggregate s b
+mapAggregate Cast (Aggregate op (Expr e)) = Aggregate op (Expr e)
 
 {- $intro
 
