@@ -25,7 +25,8 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (/=.), (<.), (<=.), (>.), (>=.),(||.), (&&.), ilike, isNull, not,
+         queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict,
+         (/=.), (<.), (<=.), (>.), (>=.),(||.), ilike, isNull, not, (++.),
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
          PGEq((==.)),
@@ -430,6 +431,12 @@ not :: Expr s 'PGBoolean -> Expr s 'PGBoolean
 not (Expr a) =
   case Op.not (Op.Column a) of
     Op.Column b -> Expr b
+
+-- | The PostgreSQL string concatenation operator.
+(++.) :: Expr s 'PGText -> Expr s 'PGText -> Expr s 'PGText
+Expr a ++. Expr b =
+  case Op.Column a Op..++ Op.Column b of
+    Op.Column c -> Expr c
 
 infix 4 ==.
 infix 4 /=.
