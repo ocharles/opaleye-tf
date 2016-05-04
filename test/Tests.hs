@@ -41,6 +41,15 @@ canOrder =
         orderBy (asc tableFoo <> orderNulls asc NullsLast tableBar) queryTable
   in shouldTypecheck (\pg -> select pg query :: IO [Table Interpret])
 
+leftJoinMonadic :: TestTree
+leftJoinMonadic = testCase "Monadic left join" $
+  let query :: Query s (Table (Expr s),  Table (Compose (Expr s) 'Nullable))
+      query = do
+        t1 <- queryTable
+        t2 <- leftJoinTableOn (\t2 -> tableFoo t2 ==. tableFoo t1)
+        return (t1, t2)
+  in shouldTypecheck (\pg -> select pg query :: IO [(Table Interpret, Maybe (Table Interpret))])
+
 --------------------------------------------------------------------------------
 main :: IO ()
 main = defaultMain (testGroup "Tests" [canQueryTable,canSelectASingleColumn])

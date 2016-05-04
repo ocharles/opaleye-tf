@@ -29,6 +29,9 @@ module Opaleye.TF
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
 
+         -- ** Aggregation
+         Aggregate(..), aggregate, count, max, min, groupBy,
+
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
 
@@ -36,7 +39,7 @@ module Opaleye.TF
          Query,
 
          -- * Implementation details
-         Compose(..), Interpret, Selectable, Insertable, ColumnView, queryRunner
+         Compose(..), Interpret, Selectable, Insertable, ColumnView, queryRunner, Aggregates(..)
 
          )
        where
@@ -54,7 +57,9 @@ import qualified Database.PostgreSQL.Simple.FromField as PG
 import qualified Database.PostgreSQL.Simple.FromRow as PG
 import GHC.Generics
 import GHC.TypeLits
+import qualified Opaleye.Aggregate as Op
 import qualified Opaleye.Column as Op
+import qualified Opaleye.Internal.Aggregate as Op
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import qualified Opaleye.Internal.Join as Op
@@ -80,10 +85,19 @@ import Opaleye.TF.Interpretation
 import Opaleye.TF.Lit
 import Opaleye.TF.Machinery
 import Opaleye.TF.Nullable
-import Opaleye.TF.Scope (Scope(Z))
+import Opaleye.TF.Scope (Scope(S,Z))
 import Opaleye.TF.Table
 import qualified Opaleye.Table as Op hiding (required)
-import Prelude hiding (null, (.), id, not)
+import Prelude hiding (null, (.), id, not, max, min, groupBy)
+
+--
+
+data Table f =
+  Table {tableFoo :: Col f ('Column "id" ('NotNullable PGInteger))
+        ,tableBar :: Col f ('Column "urn" ('Nullable 'PGText))}
+  deriving ((Generic))
+
+type instance TableName Table = "fooa"
 
 --------------------------------------------------------------------------------
 newtype Query (s :: Scope) a = Query (Op.Query a)
@@ -558,6 +572,47 @@ limit n (Query q) = Query (Op.limit n q)
 offset
   :: Int -> Query s a -> Query s a
 offset n (Query q) = Query (Op.offset n q)
+
+--------------------------------------------------------------------------------
+data Aggregate (s :: Scope) (t :: k) =
+  Aggregate (Maybe Op.AggrOp)
+            (Expr s t)
+
+type instance Col (Aggregate s) (t :: k) = Aggregate s t
+
+class Aggregates s a b | b s -> a where
+  compileAggregator :: Proxy s -> Op.Aggregator a b
+
+instance Aggregates s (Aggregate s a) (Expr s a) where
+  compileAggregator _ =
+    Op.Aggregator
+      (Op.PackMap (\f (Aggregate op (Expr e)) -> fmap Expr (f (op,e))))
+
+aggregate :: forall a b s.
+             Aggregates s a b
+          => Query ('S s) a -> Query s b
+aggregate (Query q) =
+  Query (Op.aggregate (compileAggregator (Proxy :: Proxy s))
+                      q)
+
+count :: Expr s a -> Aggregate s 'PGBigint
+count (Expr a) =
+  Aggregate (Just Op.AggrCount)
+            (Expr a)
+
+-- TODO a may not be oderable
+max :: Expr s a -> Aggregate s a
+max (Expr a) =
+  Aggregate (Just Op.AggrMax)
+            (Expr a)
+
+min :: Expr s a -> Aggregate s a
+min (Expr a) =
+  Aggregate (Just Op.AggrMin)
+            (Expr a)
+
+groupBy :: Expr s a -> Aggregate s a
+groupBy (Expr a) = Aggregate Nothing (Expr a)
 
 {- $intro
 

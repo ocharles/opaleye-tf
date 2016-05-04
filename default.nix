@@ -14,4 +14,5 @@ mkDerivation {
   homepage = "https://github.com/ocharles/opaleye-tf";
   description = "A client library for Opaleye using type families";
   license = stdenv.lib.licenses.bsd3;
+  doCheck = false;
 }
