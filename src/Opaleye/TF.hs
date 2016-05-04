@@ -25,11 +25,10 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict,
-         (/=.), (<.), (<=.), (>.), (>=.),(||.), ilike, isNull, not, (++.),
+         queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (||.), (&&.), ilike, isNull, not, (++.),
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
-         PGEq((==.)),
+         PGEq(..), PGOrd(..),
 
          -- ** Aggregation
          Aggregate(..), aggregate, count, groupBy, PGMax(max), PGMin(min),
@@ -372,12 +371,6 @@ instance (t' ~ Col (Compose (Expr s) 'Nullable) t, t' ~ (Expr s) x) => GToNull (
 restrict :: Op.QueryArr (Expr s 'PGBoolean) ()
 restrict = lmap (\(Expr prim) -> Op.Column prim) Op.restrict
 
--- | The PostgreSQL @!=@ or @<>@ operator.
-(/=.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
-Expr a /=. Expr b =
-  case Op.Column a Op../= Op.Column b of
-    Op.Column c -> Expr c
-
 -- | The PostgreSQL @OR@ operator.
 (||.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a ||. Expr b =
@@ -388,30 +381,6 @@ Expr a ||. Expr b =
 (&&.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a &&. Expr b =
   case Op.Column a Op..&& Op.Column b of
-    Op.Column c -> Expr c
-
--- | The PostgreSQL @<@ operator.
-(<.) :: forall s (a :: PGType). Expr s a -> Expr s a -> Expr s 'PGBoolean
-Expr a <. Expr b =
-  case Op.binOp Op.OpLt (Op.Column a) (Op.Column b) of
-    Op.Column c -> Expr c
-
--- | The PostgreSQL @<=@ operator.
-(<=.) :: forall s (a :: PGType). Expr s a -> Expr s a -> Expr s 'PGBoolean
-Expr a <=. Expr b =
-  case Op.binOp Op.OpLtEq (Op.Column a) (Op.Column b) of
-    Op.Column c -> Expr c
-
--- | The PostgreSQL @>@ operator.
-(>.) :: forall s (a :: PGType). Expr s a -> Expr s a -> Expr s 'PGBoolean
-Expr a >. Expr b =
-  case Op.binOp Op.OpGt (Op.Column a) (Op.Column b) of
-    Op.Column c -> Expr c
-
--- | The PostgreSQL @>@ operator.
-(>=.) :: forall s (a :: PGType). Expr s a -> Expr s a -> Expr s 'PGBoolean
-Expr a >=. Expr b =
-  case Op.binOp Op.OpGtEq (Op.Column a) (Op.Column b) of
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @ILIKE@ operator.
@@ -659,19 +628,69 @@ groupBy (Expr a) = Aggregate Nothing (Expr a)
 
 --------------------------------------------------------------------------------
 class PGEq (a :: k) where
+  -- | The PostgreSQL @=@ operator.
   (==.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+
+  -- | The PostgreSQL @!=@ or @<>@ operator.
+  (/=.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+  a /=. b = not (a ==. b)
+
+instance PGEq (a :: PGType) where
   Expr a ==. Expr b =
     case Op.Column a Op..== Op.Column b of
       Op.Column c -> Expr c
 
-instance PGEq (a :: PGType)
+  Expr a /=. Expr b =
+    case Op.Column a Op../= Op.Column b of
+      Op.Column c -> Expr c
 
+-- | 'Nullable' equality matches the equality rules for 'Maybe'. That is,
+-- @
+-- toNullable a ==. toNullable b = a ==. b
+-- null ==. null = lit True
+-- _ ==. _ = lit False
+-- @
 instance PGEq a => PGEq ('Nullable a) where
   a@(Expr ea) ==. b@(Expr eb) = eqOp ||. bothNull
     where eqOp =
             case Op.Column ea Op..== Op.Column eb of
               Op.Column c -> Expr c
           bothNull = isNull a &&. isNull b
+
+--------------------------------------------------------------------------------
+class PGEq a => PGOrd (a :: k) where
+  -- | The PostgreSQL @<@ operator.
+  (<.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+  a <. b = not (a >=. b)
+
+  -- | The PostgreSQL @<=@ operator.
+  (<=.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+  a <=. b = not (a >. b)
+
+  -- | The PostgreSQL @>@ operator.
+  (>.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+  a >. b = not (a <=. b)
+
+  -- | The PostgreSQL @>@ operator.
+  (>=.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+  a >=. b = not (a <. b)
+
+instance PGOrd (a :: PGType) where
+  Expr a <. Expr b =
+    case Op.binOp Op.OpLt (Op.Column a) (Op.Column b) of
+      Op.Column c -> Expr c
+
+  Expr a <=. Expr b =
+    case Op.binOp Op.OpLtEq (Op.Column a) (Op.Column b) of
+      Op.Column c -> Expr c
+
+  Expr a >. Expr b =
+    case Op.binOp Op.OpGt (Op.Column a) (Op.Column b) of
+      Op.Column c -> Expr c
+
+  Expr a >=. Expr b =
+    case Op.binOp Op.OpGtEq (Op.Column a) (Op.Column b) of
+      Op.Column c -> Expr c
 
 {- $intro
 
