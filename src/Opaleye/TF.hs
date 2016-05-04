@@ -502,14 +502,14 @@ newtype PGOrdering a =
   PGOrdering (a -> [(Op.OrderOp,Op.PrimExpr)])
   deriving (Monoid)
 
-asc :: (a -> Expr s (b :: PGType)) -> PGOrdering a
+asc :: PGOrd b => (a -> Expr s b) -> PGOrdering a
 asc f =
   PGOrdering
     (\x ->
        case f x of
          Expr a -> [(Op.OrderOp Op.OpAsc Op.NullsFirst,a)])
 
-desc :: (a -> Expr s (b :: PGType)) -> PGOrdering a
+desc :: PGOrd b => (a -> Expr s b) -> PGOrdering a
 desc f =
   PGOrdering
     (\x ->
@@ -522,9 +522,10 @@ data OrderNulls
   deriving (Enum,Ord,Eq,Read,Show,Bounded)
 
 orderNulls :: forall a b s.
-              (forall (x :: PGType). (a -> Expr s x) -> PGOrdering a)
+              PGOrd b
+           => ((a -> Expr s b) -> PGOrdering a)
            -> OrderNulls
-           -> (a -> Expr s ('Nullable (b :: PGType)))
+           -> (a -> Expr s ('Nullable b))
            -> PGOrdering a
 orderNulls direction nulls f =
   case direction (\a ->
