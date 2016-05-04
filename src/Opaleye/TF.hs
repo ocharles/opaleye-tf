@@ -581,7 +581,7 @@ count (Expr a) =
             (Expr a)
 
 -- | The class of data types that can be aggregated under the @max@ operation
-class PGMax a where
+class PGMax (a :: k) where
   max :: Expr s a -> Aggregate s a
   max (Expr a) =
    Aggregate (Just Op.AggrMax)
@@ -602,8 +602,14 @@ instance PGMax 'PGText
 instance PGMax ('PGTime tz)
 instance PGMax ('PGTimestamp tz)
 
+instance PGMax a => PGMax ('Nullable a) where
+  max (Expr a) =
+    mapAggregate toNullable'
+                 (max (Expr a :: Expr s a))
+    where toNullable' = Cast
+
 -- | The class of data types that can be aggregated under the @min@ operation
-class PGMin a where
+class PGMin (a :: k) where
   min :: Expr s a -> Aggregate s a
   min (Expr a) =
    Aggregate (Just Op.AggrMin)
@@ -623,6 +629,12 @@ instance PGMin 'PGSmallint
 instance PGMin 'PGText
 instance PGMin ('PGTime tz)
 instance PGMin ('PGTimestamp tz)
+
+instance PGMin a => PGMin ('Nullable a) where
+  min (Expr a) =
+    mapAggregate toNullable'
+                 (min (Expr a :: Expr s a))
+    where toNullable' = Cast
 
 groupBy :: PGEq a => Expr s a -> Aggregate s a
 groupBy (Expr a) = Aggregate Nothing (Expr a)
