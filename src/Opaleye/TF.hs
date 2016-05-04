@@ -32,7 +32,7 @@ module Opaleye.TF
          PGEq((==.)),
 
          -- ** Aggregation
-         Aggregate(..), aggregate, count, max, min, groupBy,
+         Aggregate(..), aggregate, count, groupBy, PGMax(max), PGMin(min),
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
@@ -610,18 +610,51 @@ count (Expr a) =
   Aggregate (Just Op.AggrCount)
             (Expr a)
 
--- TODO a may not be oderable
-max :: Expr s a -> Aggregate s a
-max (Expr a) =
-  Aggregate (Just Op.AggrMax)
+-- | The class of data types that can be aggregated under the @max@ operation
+class PGMax a where
+  max :: Expr s a -> Aggregate s a
+  max (Expr a) =
+   Aggregate (Just Op.AggrMax)
             (Expr a)
 
-min :: Expr s a -> Aggregate s a
-min (Expr a) =
-  Aggregate (Just Op.AggrMin)
+instance PGMax 'PGBigint
+instance PGMax ('PGCharacter n)
+instance PGMax 'PGDate
+instance PGMax 'PGDouble
+instance PGMax 'PGInet
+instance PGMax 'PGInteger
+instance PGMax 'PGInterval
+instance PGMax 'PGMoney
+instance PGMax ('PGNumeric p s)
+instance PGMax 'PGReal
+instance PGMax 'PGSmallint
+instance PGMax 'PGText
+instance PGMax ('PGTime tz)
+instance PGMax ('PGTimestamp tz)
+
+-- | The class of data types that can be aggregated under the @min@ operation
+class PGMin a where
+  min :: Expr s a -> Aggregate s a
+  min (Expr a) =
+   Aggregate (Just Op.AggrMin)
             (Expr a)
 
-groupBy :: Expr s a -> Aggregate s a
+instance PGMin 'PGBigint
+instance PGMin ('PGCharacter n)
+instance PGMin 'PGDate
+instance PGMin 'PGDouble
+instance PGMin 'PGInet
+instance PGMin 'PGInteger
+instance PGMin 'PGInterval
+instance PGMin 'PGMoney
+instance PGMin ('PGNumeric p s)
+instance PGMin 'PGReal
+instance PGMin 'PGSmallint
+instance PGMin 'PGText
+instance PGMin ('PGTime tz)
+instance PGMin ('PGTimestamp tz)
+
+groupBy :: PGEq a => Expr s a -> Aggregate s a
 groupBy (Expr a) = Aggregate Nothing (Expr a)
 
 --------------------------------------------------------------------------------
