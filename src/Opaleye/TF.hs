@@ -36,6 +36,9 @@ module Opaleye.TF
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
 
+         -- * Updating data
+         update,
+
          -- * TODO Organize
          Query,
 
@@ -421,7 +424,7 @@ infix 4 >=.
 class Insertable row where
   insertTable :: f row -> Op.Table row ()
 
-instance (KnownSymbol (TableName rel),Generic (rel Insertion),GWriter (Rep (rel ExtractSchema)) (Rep (rel Insertion))) => Insertable (rel Insertion) where
+instance (KnownSymbol (TableName rel),Generic (rel f),GWriter (Rep (rel ExtractSchema)) (Rep (rel f))) => Insertable (rel f) where
   insertTable _ =
     Op.Table (symbolVal (Proxy :: Proxy (TableName rel)))
              (lmap from
@@ -467,6 +470,29 @@ insert conn rows =
   Op.runInsertMany conn
                    (insertTable rows)
                    rows
+
+update :: forall s rel.
+          (Insertable (rel Insertion),ColumnView (rel ExtractSchema) (Rep (rel (Expr s))),Generic (rel (Expr s)),KnownSymbol (TableName rel),GWriter (Rep (rel ExtractSchema)) (Rep (rel (Expr s))))
+       => PG.Connection
+       -> (rel (Expr s) -> Expr s 'PGBoolean)
+       -> (rel (Expr s) -> rel (Expr s))
+       -> IO Int64
+update conn up pred =
+  Op.runUpdate
+    conn
+    (case insertTable (Proxy :: Proxy (rel (Expr s))) of
+       Op.Table t props -> Op.Table t (remapProps props)
+       Op.TableWithSchema a b props ->
+         Op.TableWithSchema a
+                            b
+                            (remapProps props))
+    (pred . to)
+    (\rel ->
+       case up (to rel) of
+         Expr a -> Op.Column a)
+  where remapProps (Op.TableProperties (Op.Writer f) _) =
+          Op.TableProperties (Op.Writer f)
+                             (Op.View (columnViewRep (Proxy :: Proxy (rel ExtractSchema))))
 
 -- | Insert a single row and return it. This is useful if you have columns that
 -- have default values.
