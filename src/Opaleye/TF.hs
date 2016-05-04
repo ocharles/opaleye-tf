@@ -25,9 +25,10 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (==.), (/=.), (<.), (<=.), (>.), (>=.),(||.), ilike, isNull, not,
+         queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (/=.), (<.), (<=.), (>.), (>=.),(||.), (&&.), ilike, isNull, not,
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
+         PGEq((==.)),
 
          -- ** Aggregation
          Aggregate(..), aggregate, count, max, min, groupBy,
@@ -148,9 +149,10 @@ leftJoinOn predicate q =
             ,t')
 
 -- | Shorthand to query a table using a single (field) accessor
-queryTableBy
-  :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel))
-  => (rel (Expr s) -> Expr s prim) -> Expr s prim -> Query s (rel (Expr s))
+queryTableBy :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel), PGEq prim)
+             => (rel (Expr s) -> Expr s prim)
+             -> Expr s prim
+             -> Query s (rel (Expr s))
 queryTableBy accessor r = queryTableOn ((==. r) . accessor)
 
 -- | Shorthand to filter
@@ -369,12 +371,6 @@ instance (t' ~ Col (Compose (Expr s) 'Nullable) t, t' ~ (Expr s) x) => GToNull (
 restrict :: Op.QueryArr (Expr s 'PGBoolean) ()
 restrict = lmap (\(Expr prim) -> Op.Column prim) Op.restrict
 
--- | The PostgreSQL @=@ operator.
-(==.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
-Expr a ==. Expr b =
-  case Op.Column a Op..== Op.Column b of
-    Op.Column c -> Expr c
-
 -- | The PostgreSQL @!=@ or @<>@ operator.
 (/=.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a /=. Expr b =
@@ -385,6 +381,12 @@ Expr a /=. Expr b =
 (||.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
 Expr a ||. Expr b =
   case Op.Column a Op..|| Op.Column b of
+    Op.Column c -> Expr c
+
+-- | The PostgreSQL @AND@ operator.
+(&&.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+Expr a &&. Expr b =
+  case Op.Column a Op..&& Op.Column b of
     Op.Column c -> Expr c
 
 -- | The PostgreSQL @<@ operator.
@@ -432,6 +434,7 @@ not (Expr a) =
 infix 4 ==.
 infix 4 /=.
 infixr 2 ||.
+infixr 2 &&.
 infix 4 <.
 infix 4 <=.
 infix 4 >.
@@ -613,6 +616,22 @@ min (Expr a) =
 
 groupBy :: Expr s a -> Aggregate s a
 groupBy (Expr a) = Aggregate Nothing (Expr a)
+
+--------------------------------------------------------------------------------
+class PGEq (a :: k) where
+  (==.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
+  Expr a ==. Expr b =
+    case Op.Column a Op..== Op.Column b of
+      Op.Column c -> Expr c
+
+instance PGEq (a :: PGType)
+
+instance PGEq a => PGEq ('Nullable a) where
+  a@(Expr ea) ==. b@(Expr eb) = eqOp ||. bothNull
+    where eqOp =
+            case Op.Column ea Op..== Op.Column eb of
+              Op.Column c -> Expr c
+          bothNull = isNull a &&. isNull b
 
 {- $intro
 
