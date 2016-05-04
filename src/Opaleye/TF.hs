@@ -472,12 +472,12 @@ insert conn rows =
                    rows
 
 update :: forall s rel.
-          (Insertable (rel (Expr s)),ColumnView (rel ExtractSchema) (Rep (rel (Expr s))),Generic (rel (Expr s)))
+          (Insertable (rel (Expr s)),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),Generic (rel (Expr s)))
        => PG.Connection
        -> (rel (Expr s) -> Expr s 'PGBoolean)
        -> (rel (Expr s) -> rel (Expr s))
        -> IO Int64
-update conn up pred =
+update conn pred up =
   Op.runUpdate
     conn
     (case insertTable (Proxy :: Proxy (rel (Expr s))) of
@@ -486,13 +486,13 @@ update conn up pred =
          Op.TableWithSchema a
                             b
                             (remapProps props))
-    (pred . to)
+    (up . to)
     (\rel ->
-       case up (to rel) of
+       case pred (to rel) of
          Expr a -> Op.Column a)
   where remapProps (Op.TableProperties (Op.Writer f) _) =
           Op.TableProperties (Op.Writer f)
-                             (Op.View (columnViewRep (Proxy :: Proxy (rel ExtractSchema))))
+                             (Op.View (columnViewRep (Proxy :: Proxy (Rep (rel ExtractSchema)))))
 
 -- | Insert a single row and return it. This is useful if you have columns that
 -- have default values.
