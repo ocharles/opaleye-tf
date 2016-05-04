@@ -472,7 +472,7 @@ insert conn rows =
                    rows
 
 update :: forall s rel.
-          (Insertable (rel Insertion),ColumnView (rel ExtractSchema) (Rep (rel (Expr s))),Generic (rel (Expr s)),KnownSymbol (TableName rel),GWriter (Rep (rel ExtractSchema)) (Rep (rel (Expr s))))
+          (Insertable (rel (Expr s)),ColumnView (rel ExtractSchema) (Rep (rel (Expr s))),Generic (rel (Expr s)))
        => PG.Connection
        -> (rel (Expr s) -> Expr s 'PGBoolean)
        -> (rel (Expr s) -> rel (Expr s))
