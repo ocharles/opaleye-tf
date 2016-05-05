@@ -28,7 +28,7 @@ module Opaleye.TF
          queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (||.), (&&.), ilike, isNull, not, (++.),
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
-         PGEq(..), PGOrd(..), (?=),
+         PGEq(..), PGOrd(..), (/=.), (?=),
 
          -- ** Aggregation
          Aggregate(..), aggregate, count, countDistinct, groupBy, PGMax(max), PGMin(min), mapAggregate,
