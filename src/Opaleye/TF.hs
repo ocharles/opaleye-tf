@@ -125,16 +125,16 @@ instance Monad (Query s) where
 
 --------------------------------------------------------------------------------
 leftJoinTableOn
-  :: (Generic (rel ExtractSchema),Generic (rel (Expr s)),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel),Generic (rel (Compose (Expr s) 'Nullable)),GToNull (Rep (rel (Expr s))) (Rep (rel (Compose (Expr s) 'Nullable))))
-  => (rel (Expr s) -> Expr s ('Nullable 'PGBoolean))
+  :: (Generic (rel ExtractSchema),Generic (rel (Expr s)),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel),Generic (rel (Compose (Expr s) 'Nullable)),GToNull (Rep (rel (Expr s))) (Rep (rel (Compose (Expr s) 'Nullable))),NullableBoolean boolean)
+  => (rel (Expr s) -> Expr s boolean)
   -> Query s (rel (Compose (Expr s) 'Nullable))
 leftJoinTableOn predicate = leftJoinOn predicate queryTable
 
 -- TODO Is it really sound to use the same scope here? Perhaps requires
 -- LATERAL joins.
 leftJoinOn
-  :: ToNull a maybeA
-  => (a -> Expr s ('Nullable 'PGBoolean)) -> Query s a -> Query s maybeA
+  :: (ToNull a maybeA, NullableBoolean boolean)
+  => (a -> Expr s boolean) -> Query s a -> Query s maybeA
 leftJoinOn predicate q =
   Query $
   Op.QueryArr $
@@ -145,7 +145,7 @@ leftJoinOn predicate q =
           (rightRel,pqR,t') ->
             (toNull rightRel
             ,PQ.Join PQ.LeftJoin
-                     (case predicate rightRel of
+                     (case toNullableBoolean (predicate rightRel) of
                         Expr a -> a)
                      left
                      pqR
@@ -371,8 +371,9 @@ instance (t' ~ Col (Compose (Expr s) 'Nullable) t, t' ~ (Expr s) x) => GToNull (
 --------------------------------------------------------------------------------
 
 -- | Apply a @WHERE@ restriction to a table.
-restrict :: Op.QueryArr (Expr s ('Nullable 'PGBoolean)) ()
-restrict = lmap (\(Expr prim) -> Op.Column prim) Op.restrict
+restrict :: NullableBoolean boolean => Op.QueryArr (Expr s boolean) ()
+restrict =
+  lmap ((\(Expr prim) -> Op.Column prim) . toNullableBoolean) Op.restrict
 
 -- | The PostgreSQL @OR@ operator.
 (||.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
@@ -520,7 +521,8 @@ insert1Returning conn row =
 -- | Given a 'Op.Query', filter the rows of the result set according to a
 -- predicate.
 filterQuery
-  :: (a -> Expr s ('Nullable 'PGBoolean)) -> Query s a -> Query s a
+  :: (NullableBoolean boolean)
+  => (a -> Expr s boolean) -> Query s a -> Query s a
 filterQuery f (Query t) = Query $ fmap snd (first restrict . fmap (f &&& id) t)
 
 --------------------------------------------------------------------------------
@@ -703,6 +705,15 @@ instance PGEq (a :: PGType) where
   Expr a ==. Expr b =
     case Op.Column a Op..== Op.Column b of
       Op.Column c -> Expr c
+
+class NullableBoolean (a :: k) where
+  toNullableBoolean :: Expr s a -> Expr s ('Nullable 'PGBoolean)
+
+instance NullableBoolean 'PGBoolean where
+  toNullableBoolean = toNullable
+
+instance NullableBoolean ('Nullable 'PGBoolean) where
+  toNullableBoolean = id
 
 (?=) :: PGEq a
      => Expr s ('Nullable a)
