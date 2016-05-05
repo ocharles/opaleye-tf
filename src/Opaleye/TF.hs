@@ -589,10 +589,27 @@ type instance Col (Aggregate s) (t :: k) = Aggregate s t
 class Aggregates s a b | b s -> a where
   compileAggregator :: Proxy s -> Op.Aggregator a b
 
-instance Aggregates s (Aggregate s a) (Expr s a) where
-  compileAggregator _ =
+instance (Generic (rel (Aggregate ('S s))), Generic (rel (Expr s))
+         ,GAggregator (Rep (rel (Aggregate ('S s))))
+                      (Rep (rel (Expr s)))) => Aggregates s (rel (Aggregate ('S s))) (rel (Expr s)) where
+  compileAggregator _ = dimap from to gaggregator
+
+class GAggregator f g where
+  gaggregator :: Op.Aggregator (f a) (g b)
+
+instance GAggregator f g => GAggregator (M1 i c f) (M1 i c g) where
+  gaggregator = dimap (\(M1 a) -> a) M1 gaggregator
+
+instance (GAggregator a c,GAggregator b d) => GAggregator (a :*: b) (c :*: d) where
+  gaggregator =
+    dimap (\(l :*: r) -> (l,r))
+          (\(l,r) -> l :*: r)
+          (gaggregator ***! gaggregator)
+
+instance (Expr s b ~ Col (Expr s) a) => GAggregator (K1 i (Aggregate ('S s) a)) (K1 i (Expr s b)) where
+  gaggregator =
     Op.Aggregator
-      (Op.PackMap (\f (Aggregate op (Expr e)) -> fmap Expr (f (op,e))))
+      (Op.PackMap (\f (K1 (Aggregate op (Expr e))) -> fmap (K1 . Expr) (f (op,e))))
 
 aggregate :: forall a b s.
              Aggregates s a b
