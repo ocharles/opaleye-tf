@@ -31,7 +31,7 @@ module Opaleye.TF
          PGEq(..), PGOrd(..), (?=),
 
          -- ** Aggregation
-         Aggregate(..), aggregate, count, groupBy, PGMax(max), PGMin(min), mapAggregate,
+         Aggregate(..), aggregate, count, countDistinct, groupBy, PGMax(max), PGMin(min), mapAggregate,
 
          -- * Inserting data
          insert, insert1Returning, Insertion, Default(..), overrideDefault, insertDefault,
@@ -585,6 +585,7 @@ offset n (Query q) = Query (Op.offset n q)
 data Aggregate (s :: Scope) (t :: k) =
   Aggregate (Maybe Op.AggrOp)
             (Expr s t)
+            Op.AggrDistinct
 
 type instance Col (Aggregate s) (t :: k) = Aggregate s t
 
@@ -611,7 +612,14 @@ instance (GAggregator a c,GAggregator b d) => GAggregator (a :*: b) (c :*: d) wh
 instance (Expr s b ~ Col (Expr s) a) => GAggregator (K1 i (Aggregate ('S s) a)) (K1 i (Expr s b)) where
   gaggregator =
     Op.Aggregator
-      (Op.PackMap (\f (K1 (Aggregate op (Expr e))) -> fmap (K1 . Expr) (f (op,e))))
+      (Op.PackMap
+         (\f (K1 (Aggregate op (Expr e) distinct)) ->
+            fmap (K1 . Expr)
+                 (f (liftA3 (,,)
+                            op
+                            (pure [])
+                            (pure distinct)
+                    ,e))))
 
 aggregate :: forall a b s.
              Aggregates s a b
@@ -624,13 +632,21 @@ count :: Expr s a -> Aggregate s 'PGBigint
 count (Expr a) =
   Aggregate (Just Op.AggrCount)
             (Expr a)
+            Op.AggrAll
+
+countDistinct :: Expr s a -> Aggregate s 'PGBigint
+countDistinct (Expr a) =
+  Aggregate (Just Op.AggrCount)
+            (Expr a)
+            Op.AggrDistinct
 
 -- | The class of data types that can be aggregated under the @max@ operation
-class PGMax (a :: k) where
+class PGMax (a :: k)  where
   max :: Expr s a -> Aggregate s a
   max (Expr a) =
-   Aggregate (Just Op.AggrMax)
-            (Expr a)
+    Aggregate (Just Op.AggrMax)
+              (Expr a)
+              Op.AggrAll
 
 instance PGMax 'PGBigint
 instance PGMax ('PGCharacter n)
@@ -654,11 +670,12 @@ instance PGMax a => PGMax ('Nullable a) where
     where toNullable' = Cast
 
 -- | The class of data types that can be aggregated under the @min@ operation
-class PGMin (a :: k) where
+class PGMin (a :: k)  where
   min :: Expr s a -> Aggregate s a
   min (Expr a) =
-   Aggregate (Just Op.AggrMin)
-            (Expr a)
+    Aggregate (Just Op.AggrMin)
+              (Expr a)
+              Op.AggrAll
 
 instance PGMin 'PGBigint
 instance PGMin ('PGCharacter n)
@@ -682,7 +699,7 @@ instance PGMin a => PGMin ('Nullable a) where
     where toNullable' = Cast
 
 groupBy :: PGEq a => Expr s a -> Aggregate s a
-groupBy (Expr a) = Aggregate Nothing (Expr a)
+groupBy (Expr a) = Aggregate Nothing (Expr a) Op.AggrAll
 
 --------------------------------------------------------------------------------
 class PGEq (a :: k) where
@@ -770,7 +787,7 @@ instance PGOrd (a :: PGType) where
 
 --------------------------------------------------------------------------------
 mapAggregate :: a ~> b -> Aggregate s a -> Aggregate s b
-mapAggregate Cast (Aggregate op (Expr e)) = Aggregate op (Expr e)
+mapAggregate Cast (Aggregate op (Expr e) d) = Aggregate op (Expr e) d
 
 {- $intro
 
