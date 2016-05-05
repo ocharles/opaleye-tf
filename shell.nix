@@ -37,8 +37,8 @@ let
         src = pkgs.fetchFromGitHub {
           owner = "ocharles";
           repo = "haskell-opaleye";
-          sha256 = "1vyvnqg3ik1v37gfg409maaviq8ggvyf2cnbw01nb3imj3n0f0d8";
-          rev = "0234a162b242254ff0c44b642654a250087d6195";
+          sha256 = "1hmynf24f55s56sb536jvwr0ldczplic9way31r4rfc1wqxqazbm";
+          rev = "31474c58e0814520835437862240afd55c868bb9";
         };
       }));
     };
