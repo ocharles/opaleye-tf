@@ -28,7 +28,7 @@ module Opaleye.TF
          queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (||.), (&&.), ilike, isNull, not, (++.),
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
-         PGEq(..), PGOrd(..),
+         PGEq(..), PGOrd(..), (?=),
 
          -- ** Aggregation
          Aggregate(..), aggregate, count, groupBy, PGMax(max), PGMin(min), mapAggregate,
@@ -126,7 +126,7 @@ instance Monad (Query s) where
 --------------------------------------------------------------------------------
 leftJoinTableOn
   :: (Generic (rel ExtractSchema),Generic (rel (Expr s)),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel),Generic (rel (Compose (Expr s) 'Nullable)),GToNull (Rep (rel (Expr s))) (Rep (rel (Compose (Expr s) 'Nullable))))
-  => (rel (Expr s) -> Expr s 'PGBoolean)
+  => (rel (Expr s) -> Expr s ('Nullable 'PGBoolean))
   -> Query s (rel (Compose (Expr s) 'Nullable))
 leftJoinTableOn predicate = leftJoinOn predicate queryTable
 
@@ -134,7 +134,7 @@ leftJoinTableOn predicate = leftJoinOn predicate queryTable
 -- LATERAL joins.
 leftJoinOn
   :: ToNull a maybeA
-  => (a -> Expr s 'PGBoolean) -> Query s a -> Query s maybeA
+  => (a -> Expr s ('Nullable 'PGBoolean)) -> Query s a -> Query s maybeA
 leftJoinOn predicate q =
   Query $
   Op.QueryArr $
@@ -156,12 +156,12 @@ queryTableBy :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (
              => (rel (Expr s) -> Expr s prim)
              -> Expr s prim
              -> Query s (rel (Expr s))
-queryTableBy accessor r = queryTableOn ((==. r) . accessor)
+queryTableBy accessor r = queryTableOn (toNullable . (==. r) . accessor)
 
 -- | Shorthand to filter
-queryTableOn
-  :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel))
-  => (rel (Expr s) -> Expr s 'PGBoolean) -> Query s (rel (Expr s))
+queryTableOn :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel))
+             => (rel (Expr s) -> Expr s ('Nullable 'PGBoolean))
+             -> Query s (rel (Expr s))
 queryTableOn predicate = filterQuery predicate queryTable
 
 --------------------------------------------------------------------------------
@@ -371,7 +371,7 @@ instance (t' ~ Col (Compose (Expr s) 'Nullable) t, t' ~ (Expr s) x) => GToNull (
 --------------------------------------------------------------------------------
 
 -- | Apply a @WHERE@ restriction to a table.
-restrict :: Op.QueryArr (Expr s 'PGBoolean) ()
+restrict :: Op.QueryArr (Expr s ('Nullable 'PGBoolean)) ()
 restrict = lmap (\(Expr prim) -> Op.Column prim) Op.restrict
 
 -- | The PostgreSQL @OR@ operator.
@@ -520,7 +520,7 @@ insert1Returning conn row =
 -- | Given a 'Op.Query', filter the rows of the result set according to a
 -- predicate.
 filterQuery
-  :: (a -> Expr s 'PGBoolean) -> Query s a -> Query s a
+  :: (a -> Expr s ('Nullable 'PGBoolean)) -> Query s a -> Query s a
 filterQuery f (Query t) = Query $ fmap snd (first restrict . fmap (f &&& id) t)
 
 --------------------------------------------------------------------------------
@@ -670,31 +670,40 @@ class PGEq (a :: k) where
   -- | The PostgreSQL @=@ operator.
   (==.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
 
-  -- | The PostgreSQL @!=@ or @<>@ operator.
-  (/=.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
-  a /=. b = not (a ==. b)
+  -- XXX It would be really nice if this could automatically be inferred.
+  -- | Is the underlying equality function @STRICT@ (PostgreSQL terminology)?
+  -- Strict equality means that if either of the inputs are null, then the
+  -- result of @==.@ is @null@. This is the case for primitive equality, and
+  -- the default implementation is to return 'True'.
+  strictEquality :: Expr s ('Nullable a) -> Bool
+  strictEquality _ = True
+
+-- | The PostgreSQL @!=@ or @<>@ operator.
+(/=.) :: PGEq a => Expr s a -> Expr s a -> Expr s 'PGBoolean
+a /=. b = not (a ==. b)
 
 instance PGEq (a :: PGType) where
   Expr a ==. Expr b =
     case Op.Column a Op..== Op.Column b of
       Op.Column c -> Expr c
 
-  Expr a /=. Expr b =
-    case Op.Column a Op../= Op.Column b of
-      Op.Column c -> Expr c
+(?=) :: PGEq a
+     => Expr s ('Nullable a)
+     -> Expr s ('Nullable a)
+     -> Expr s ('Nullable 'PGBoolean)
+a ?= b
+  | strictEquality a =
+    toNullable (mapExpr unsafeFromNullable a ==. mapExpr unsafeFromNullable b)
+  | otherwise =
+    nullable (lit Nothing)
+             (\a' ->
+                nullable (lit Nothing)
+                         (\b' -> toNullable (a' ==. b'))
+                         b)
+             a
+  where unsafeFromNullable :: 'Nullable a ~> a
+        unsafeFromNullable = Cast
 
--- | 'Nullable' equality matches the equality rules for 'Maybe'. That is,
--- @
--- toNullable a ==. toNullable b = a ==. b
--- null ==. null = lit True
--- _ ==. _ = lit False
--- @
-instance PGEq a => PGEq ('Nullable a) where
-  a@(Expr ea) ==. b@(Expr eb) = eqOp ||. bothNull
-    where eqOp =
-            case Op.Column ea Op..== Op.Column eb of
-              Op.Column c -> Expr c
-          bothNull = isNull a &&. isNull b
 
 --------------------------------------------------------------------------------
 class PGEq a => PGOrd (a :: k) where
