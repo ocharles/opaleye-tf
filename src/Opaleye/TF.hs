@@ -29,7 +29,7 @@ module Opaleye.TF
          queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (||.), (&&.), ilike, elem_, isNull, not, (++.),
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
-         PGEq(..), PGOrd(..), (/=.), (?=),
+         PGEq(..), PGOrd(..), (/=.), (?=), SingleColumn(..), mkSingle,
 
          -- ** Aggregation
          Aggregate(..), aggregate, count, countDistinct, groupBy, PGMax(max), PGMin(min), mapAggregate,
@@ -608,6 +608,11 @@ instance (Generic (rel (Aggregate ('S s))), Generic (rel (Expr s))
          ,GAggregator (Rep (rel (Aggregate ('S s))))
                       (Rep (rel (Expr s)))) => Aggregates s (rel (Aggregate ('S s))) (rel (Expr s)) where
   compileAggregator _ = dimap from to gaggregator
+
+newtype SingleColumn a f = SingleColumn { unColumn :: Col f a }
+
+mkSingle :: (Col f a ~ g a) => g a -> SingleColumn a f
+mkSingle = SingleColumn
 
 class GAggregator f g where
   gaggregator :: Op.Aggregator (f a) (g b)
