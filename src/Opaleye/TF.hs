@@ -12,6 +12,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE Arrows #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Opaleye.TF
        ( -- $intro
@@ -370,10 +371,10 @@ instance (t' ~ Col (Compose (Expr s) 'Nullable) t, t' ~ (Expr s) x) => GToNull (
 
 --------------------------------------------------------------------------------
 
--- | Apply a @WHERE@ restriction to a table.
-restrict :: NullableBoolean boolean => Op.QueryArr (Expr s boolean) ()
-restrict =
-  lmap ((\(Expr prim) -> Op.Column prim) . toNullableBoolean) Op.restrict
+-- | Apply a @WHERE@ restriction to a table. Like 'guard' for 'MonadPlus'.
+restrict :: NullableBoolean boolean => Expr s boolean -> Query s ()
+restrict (toNullableBoolean -> Expr b) =
+  Query (Op.keepWhen (const (Op.Column b)))
 
 -- | The PostgreSQL @OR@ operator.
 (||.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
@@ -531,7 +532,10 @@ insert1Returning conn row =
 filterQuery
   :: (NullableBoolean boolean)
   => (a -> Expr s boolean) -> Query s a -> Query s a
-filterQuery f (Query t) = Query $ fmap snd (first restrict . fmap (f &&& id) t)
+filterQuery f (Query t) =
+  Query (fmap snd (first restrict' . fmap (f &&& id) t))
+  where restrict' =
+          lmap ((\(Expr prim) -> Op.Column prim) . toNullableBoolean) Op.restrict
 
 --------------------------------------------------------------------------------
 newtype PGOrdering a =
