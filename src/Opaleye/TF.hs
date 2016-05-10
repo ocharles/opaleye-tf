@@ -638,9 +638,9 @@ instance (Expr s b ~ Col (Expr s) a) => GAggregator (K1 i (Aggregate ('S s) a)) 
                             (pure distinct)
                     ,e))))
 
-aggregate :: forall a b s.
-             Aggregates s a b
-          => Query ('S s) a -> Query s b
+aggregate :: forall row s.
+             Aggregates s (row (Aggregate ('S s))) (row (Expr s))
+          => Query ('S s) (row (Aggregate ('S s))) -> Query s (row (Expr s))
 aggregate (Query q) =
   Query (Op.aggregate (compileAggregator (Proxy :: Proxy s))
                       q)
