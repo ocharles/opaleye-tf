@@ -25,7 +25,7 @@ module Opaleye.TF
          ExtractSchema, TableName, Column(..), PGNull(..), PGDefault(..),
 
          -- * Querying tables
-         queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (||.), (&&.), ilike, isNull, not, (++.),
+         queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (||.), (&&.), ilike, elem_, isNull, not, (++.),
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
          PGEq(..), PGOrd(..), (/=.), (?=),
@@ -386,6 +386,14 @@ Expr a ||. Expr b =
 Expr a &&. Expr b =
   case Op.Column a Op..&& Op.Column b of
     Op.Column c -> Expr c
+
+-- | A helper similar to the PostgreSQL @IN@ operator for matching a list of expressions.
+--   This may be replaced in the future by
+-- @
+--     in_ :: Expr s a -> Expr s ('PGArray a) -> Expr s 'PGBoolean
+-- @
+elem_ :: PGEq a => Expr s a -> [Expr s a] -> Expr s 'PGBoolean
+elem_ x = Prelude.foldl (\b y -> x ==. y ||. b) (lit False)
 
 -- | The PostgreSQL @ILIKE@ operator.
 ilike :: Expr s 'PGText -> Expr s 'PGText -> Expr s 'PGBoolean
