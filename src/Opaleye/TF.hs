@@ -29,7 +29,7 @@ module Opaleye.TF
          queryTable, queryTableBy, queryTableOn, Expr, select, leftJoin, restrict, (||.), (&&.), ilike, elem_, isNull, not, (++.),
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
-         PGEq(..), PGOrd(..), (/=.), (?=), SingleColumn(..), mkSingle,
+         PGEq(..), PGOrd(..), (/=.), (?=), SingleColumn(..), mkSingle, in_,
 
          -- ** Aggregation
          Aggregate(..), aggregate, count, countDistinct, groupBy, PGMax(max), PGMin(min), mapAggregate,
@@ -805,6 +805,11 @@ instance PGOrd (a :: PGType) where
 --------------------------------------------------------------------------------
 mapAggregate :: a ~> b -> Aggregate s a -> Aggregate s b
 mapAggregate Cast (Aggregate op (Expr e) d) = Aggregate op (Expr e) d
+
+in_
+  :: PGEq a
+  => Expr s a -> [Expr s a] -> Expr s 'PGBoolean
+in_ x = Prelude.foldl (\b y -> x ==. y ||. b) (lit False)
 
 {- $intro
 
