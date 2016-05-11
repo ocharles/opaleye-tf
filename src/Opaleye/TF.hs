@@ -610,6 +610,7 @@ instance (Generic (rel (Aggregate ('S s))), Generic (rel (Expr s))
   compileAggregator _ = dimap from to gaggregator
 
 newtype SingleColumn a f = SingleColumn { unColumn :: Col f a }
+  deriving (Generic)
 
 mkSingle :: (Col f a ~ g a) => g a -> SingleColumn a f
 mkSingle = SingleColumn
