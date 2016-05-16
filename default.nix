@@ -1,6 +1,6 @@
 { mkDerivation, base, bytestring, opaleye, postgresql-simple
 , product-profunctors, profunctors, stdenv, tasty, tasty-hunit
-, text, time, transformers
+, text, time, transformers, free
 }:
 mkDerivation {
   pname = "opaleye-tf";
@@ -8,7 +8,7 @@ mkDerivation {
   src = ./.;
   libraryHaskellDepends = [
     base bytestring opaleye postgresql-simple product-profunctors
-    profunctors text time transformers
+    profunctors text time transformers free
   ];
   testHaskellDepends = [ base tasty tasty-hunit ];
   homepage = "https://github.com/ocharles/opaleye-tf";

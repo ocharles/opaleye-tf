@@ -93,16 +93,7 @@ import Opaleye.TF.Nullable
 import Opaleye.TF.Scope (Scope(S,Z))
 import Opaleye.TF.Table
 import qualified Opaleye.Table as Op hiding (required)
-import Prelude hiding (null, (.), id, not, max, min, groupBy)
-
---
-
-data Table f =
-  Table {tableFoo :: Col f ('Column "id" ('NotNullable PGInteger))
-        ,tableBar :: Col f ('Column "urn" ('Nullable 'PGText))}
-  deriving ((Generic))
-
-type instance TableName Table = "fooa"
+import Prelude hiding (null, (.), id, not, max, min)
 
 --------------------------------------------------------------------------------
 newtype Query (s :: Scope) a = Query (Op.Query a)
@@ -487,7 +478,7 @@ update :: forall s rel.
        -> (rel (Expr s) -> Expr s 'PGBoolean)
        -> (rel (Expr s) -> rel (Expr s))
        -> IO Int64
-update conn pred up =
+update conn where_ up =
   Op.runUpdate
     conn
     (case insertTable (Proxy :: Proxy (rel (Expr s))) of
@@ -498,7 +489,7 @@ update conn pred up =
                             (remapProps props))
     (up . to)
     (\rel ->
-       case pred (to rel) of
+       case where_ (to rel) of
          Expr a -> Op.Column a)
   where remapProps (Op.TableProperties (Op.Writer f) _) =
           Op.TableProperties (Op.Writer f)
@@ -806,6 +797,7 @@ instance PGOrd (a :: PGType) where
 --------------------------------------------------------------------------------
 mapAggregate :: a ~> b -> Aggregate s a -> Aggregate s b
 mapAggregate Cast (Aggregate op (Expr e) d) = Aggregate op (Expr e) d
+mapAggregate Id (Aggregate op (Expr e) d) = Aggregate op (Expr e) d
 
 in_
   :: PGEq a
