@@ -49,6 +49,7 @@ module Opaleye.TF
          )
        where
 
+import Data.Semigroup (Semigroup)
 import Control.Applicative
 import Control.Arrow (first, (&&&))
 import Control.Category ((.), id)
@@ -531,7 +532,7 @@ filterQuery f (Query t) =
 --------------------------------------------------------------------------------
 newtype PGOrdering a =
   PGOrdering (a -> [(Op.OrderOp,Op.PrimExpr)])
-  deriving (Monoid)
+  deriving (Semigroup, Monoid)
 
 asc :: PGOrd b => (a -> Expr s b) -> PGOrdering a
 asc f =

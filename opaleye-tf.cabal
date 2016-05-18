@@ -20,7 +20,7 @@ library
   exposed-modules:     Opaleye.TF, Opaleye.TF.BaseTypes, Opaleye.TF.Machinery, Opaleye.TF.Default, Opaleye.TF.Nullable, Opaleye.TF.Col, Opaleye.TF.Lit, Opaleye.TF.Expr, Opaleye.TF.Interpretation, Opaleye.TF.Insert, Opaleye.TF.Table, Opaleye.TF.Scope, Control.Monad.Opaleye
   -- other-modules:       
   other-extensions:    DataKinds, PolyKinds, OverloadedStrings, RankNTypes, ScopedTypeVariables, GeneralizedNewtypeDeriving, TypeOperators, FunctionalDependencies, ConstraintKinds, FlexibleContexts, FlexibleInstances, DeriveGeneric, DefaultSignatures, TypeFamilies, UndecidableInstances, StandaloneDeriving, Arrows
-  build-depends:       base >=4.8 && <4.10, bytestring, exceptions >= 0.8.2.1, free >= 4.12.4, mtl >= 2.2.1, opaleye, postgresql-simple, product-profunctors, profunctors, text, time, transformers >=0.4 && <0.6
+  build-depends:       base >=4.8 && <4.10, bytestring, exceptions >= 0.8.2.1, free >= 4.12.4, mtl >= 2.2.1, opaleye, postgresql-simple, product-profunctors, profunctors, text, time, transformers >=0.4 && <0.6, semigroups
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall
