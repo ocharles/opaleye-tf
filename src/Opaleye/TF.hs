@@ -368,17 +368,46 @@ restrict :: NullableBoolean boolean => Expr s boolean -> Query s ()
 restrict (toNullableBoolean -> Expr b) =
   Query (Op.keepWhen (const (Op.Column b)))
 
--- | The PostgreSQL @OR@ operator.
-(||.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
-Expr a ||. Expr b =
-  case Op.Column a Op..|| Op.Column b of
-    Op.Column c -> Expr c
+-- | Boolean operations, overloaded to also work on nullable values.
+class PGBoolean a where
+  true, false :: Expr s a
+  not :: Expr s a -> Expr s a
+  (||.), (&&.) :: Expr s a -> Expr s a -> Expr s a
 
--- | The PostgreSQL @AND@ operator.
-(&&.) :: Expr s a -> Expr s a -> Expr s 'PGBoolean
-Expr a &&. Expr b =
-  case Op.Column a Op..&& Op.Column b of
-    Op.Column c -> Expr c
+instance PGBoolean 'PGBoolean where
+  Expr a ||. Expr b =
+    case Op.Column a Op..|| Op.Column b of
+      Op.Column c -> Expr c
+
+  Expr a &&. Expr b =
+    case Op.Column a Op..&& Op.Column b of
+      Op.Column c -> Expr c
+
+  not (Expr a) =
+    case Op.not (Op.Column a) of
+      Op.Column b -> Expr b
+
+  true = lit True
+  false = lit False
+
+-- | All operations use the same semantics as those in PostgreSQL. This does
+-- *not* correspond to a true Boolean algebra, as @true ||. null@ is @null@,
+-- rather than @true@.
+instance PGBoolean ('Nullable 'PGBoolean) where
+  Expr a ||. Expr b =
+    case Op.Column a Op..|| Op.Column b of
+      Op.Column c -> Expr c
+
+  Expr a &&. Expr b =
+    case Op.Column a Op..&& Op.Column b of
+      Op.Column c -> Expr c
+
+  not (Expr a) =
+    case Op.not (Op.Column a) of
+      Op.Column b -> Expr b
+
+  true = lit (Just True)
+  false = lit (Just False)
 
 -- | A helper similar to the PostgreSQL @IN@ operator for matching a list of expressions.
 --   This may be replaced in the future by
@@ -398,12 +427,6 @@ Expr a `ilike` Expr b =
 isNull :: Expr s ('Nullable a) -> Expr s 'PGBoolean
 isNull (Expr a) =
   case Op.isNull (Op.Column a) of
-    Op.Column b -> Expr b
-
--- | The PostgreSQL @NOT@ operator
-not :: Expr s 'PGBoolean -> Expr s 'PGBoolean
-not (Expr a) =
-  case Op.not (Op.Column a) of
     Op.Column b -> Expr b
 
 -- | The PostgreSQL string concatenation operator.
@@ -756,8 +779,9 @@ a ?= b
                          (\b' -> toNullable (a' ==. b'))
                          b)
              a
-  where unsafeFromNullable :: 'Nullable a ~> a
-        unsafeFromNullable = Cast
+
+unsafeFromNullable :: 'Nullable a ~> a
+unsafeFromNullable = Cast
 
 
 --------------------------------------------------------------------------------
