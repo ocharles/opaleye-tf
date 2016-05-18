@@ -473,10 +473,10 @@ insert conn rows =
                    (insertTable rows)
                    rows
 
-update :: forall s rel.
-          (Insertable (rel (Expr s)),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),Generic (rel (Expr s)))
+update :: forall boolean s rel.
+          (Insertable (rel (Expr s)),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),Generic (rel (Expr s)), NullableBoolean boolean)
        => PG.Connection
-       -> (rel (Expr s) -> Expr s 'PGBoolean)
+       -> (rel (Expr s) -> Expr s boolean)
        -> (rel (Expr s) -> rel (Expr s))
        -> IO Int64
 update conn where_ up =
