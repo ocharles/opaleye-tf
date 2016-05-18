@@ -326,8 +326,8 @@ instance UnpackspecRel (K1 i (Expr s colType)) where
 -- them. The left join has all rows of the left query, joined against zero or
 -- more rows in the right query. If the join matches no rows in the right table,
 -- then all columns will be @null@.
-leftJoin :: (ToNull right nullRight)
-         => (left -> right -> Expr s 'PGBoolean)
+leftJoin :: (ToNull right nullRight, NullableBoolean boolean)
+         => (left -> right -> Expr s boolean)
          -> Query s left
          -> Query s right
          -> Query s (left,nullRight)
