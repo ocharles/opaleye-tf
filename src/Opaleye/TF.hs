@@ -145,7 +145,7 @@ leftJoinOn predicate q =
             ,t')
 
 -- | Shorthand to query a table using a single (field) accessor
-queryTableBy :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel), PGEq prim)
+queryTableBy :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel),PGEq prim)
              => (rel (Expr s) -> Expr s prim)
              -> Expr s prim
              -> Query s (rel (Expr s))
