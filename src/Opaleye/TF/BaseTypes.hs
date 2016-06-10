@@ -94,6 +94,7 @@ type instance Col Interpret ('PGNumeric p 3) = Fixed E3
 type instance Col Interpret ('PGNumeric p 6) = Fixed E6
 type instance Col Interpret ('PGNumeric p 9) = Fixed E9
 type instance Col Interpret 'PGBytea = ByteString
+type instance Col Interpret ('PGCharacter len) = Text
 
 instance Lit 'PGBigint where
   lit = Expr . Op.unColumn . Op.pgInt8
@@ -108,6 +109,9 @@ instance Lit 'PGReal where
   lit = Expr . Op.unColumn . Op.pgDouble . realToFrac
 
 instance Lit 'PGText where
+  lit = Expr . Op.unColumn . Op.pgStrictText
+
+instance Lit ('PGCharacter n) where
   lit = Expr . Op.unColumn . Op.pgStrictText
 
 instance Lit ('PGTimestamp 'WithoutTimeZone) where
