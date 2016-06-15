@@ -102,6 +102,9 @@ deriving instance Functor (TransactionSyntax e)
 class Monad m => MonadTransaction m where
   liftTransaction :: F (TransactionSyntax e) a -> m a
 
+instance {-# OVERLAPPABLE #-} (Monad (t m), MonadTrans t, MonadTransaction m) => MonadTransaction (t m) where
+  liftTransaction = lift . liftTransaction
+
 runTransaction :: MonadTransaction m
                => Pg.TransactionMode
                -> (Pg.SqlError -> Bool)
