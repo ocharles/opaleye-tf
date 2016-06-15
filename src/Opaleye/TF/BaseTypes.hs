@@ -12,6 +12,7 @@
 
 module Opaleye.TF.BaseTypes where
 
+import qualified Data.Aeson as Aeson
 import Data.ByteString (ByteString)
 import Data.Fixed (E0, E1, E2, E3, E6, E9, Fixed)
 import Data.Int (Int32, Int64)
@@ -95,6 +96,7 @@ type instance Col Interpret ('PGNumeric p 6) = Fixed E6
 type instance Col Interpret ('PGNumeric p 9) = Fixed E9
 type instance Col Interpret 'PGBytea = ByteString
 type instance Col Interpret ('PGCharacter len) = Text
+type instance Col Interpret 'PGJSON = Aeson.Value
 
 instance Lit 'PGBigint where
   lit = Expr . Op.unColumn . Op.pgInt8
@@ -122,6 +124,9 @@ instance Lit ('PGTimestamp 'WithTimeZone) where
 
 instance Lit 'PGDouble where
   lit = Expr . Op.unColumn . Op.pgDouble
+
+instance Lit 'PGJSON where
+  lit = Expr . Op.unColumn . Op.pgValueJSON
 
 pgNow :: Expr s ('PGTimestamp 'WithTimeZone)
 pgNow = mapExpr Cast (lit (pack "now") :: Expr s 'PGText)
