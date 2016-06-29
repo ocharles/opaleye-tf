@@ -683,6 +683,7 @@ class PGMax (a :: k)  where
 
 instance PGMax 'PGBigint
 instance PGMax ('PGCharacter n)
+instance PGMax ('PGVarchar n)
 instance PGMax 'PGDate
 instance PGMax 'PGDouble
 instance PGMax 'PGInet
@@ -712,6 +713,7 @@ class PGMin (a :: k)  where
 
 instance PGMin 'PGBigint
 instance PGMin ('PGCharacter n)
+instance PGMin ('PGVarchar n)
 instance PGMin 'PGDate
 instance PGMin 'PGDouble
 instance PGMin 'PGInet

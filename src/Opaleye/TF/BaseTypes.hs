@@ -96,6 +96,7 @@ type instance Col Interpret ('PGNumeric p 6) = Fixed E6
 type instance Col Interpret ('PGNumeric p 9) = Fixed E9
 type instance Col Interpret 'PGBytea = ByteString
 type instance Col Interpret ('PGCharacter len) = Text
+type instance Col Interpret ('PGVarchar len) = Text
 type instance Col Interpret 'PGJSON = Aeson.Value
 
 instance Lit 'PGBigint where
@@ -114,6 +115,9 @@ instance Lit 'PGText where
   lit = Expr . Op.unColumn . Op.pgStrictText
 
 instance Lit ('PGCharacter n) where
+  lit = Expr . Op.unColumn . Op.pgStrictText
+
+instance Lit ('PGVarchar n) where
   lit = Expr . Op.unColumn . Op.pgStrictText
 
 instance Lit ('PGTimestamp 'WithoutTimeZone) where
