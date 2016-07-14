@@ -149,11 +149,11 @@ queryTableBy :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (
              => (rel (Expr s) -> Expr s prim)
              -> Expr s prim
              -> Query s (rel (Expr s))
-queryTableBy accessor r = queryTableOn (toNullable . (==. r) . accessor)
+queryTableBy accessor r = queryTableOn ((==. r) . accessor)
 
 -- | Shorthand to filter
-queryTableOn :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel))
-             => (rel (Expr s) -> Expr s ('Nullable 'PGBoolean))
+queryTableOn :: (Generic (rel (Expr s)),Generic (rel ExtractSchema),InjPackMap (Rep (rel (Expr s))),ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr s))),KnownSymbol (TableName rel), NullableBoolean boolean)
+             => (rel (Expr s) -> Expr s boolean)
              -> Query s (rel (Expr s))
 queryTableOn predicate = filterQuery predicate queryTable
 
