@@ -41,7 +41,7 @@ module Opaleye.TF
          update,
 
          -- * TODO Organize
-         Query,
+         Query, unsafeFromNullable,
 
          -- * Implementation details
          Compose(..), Interpret, Selectable, Insertable, ColumnView, queryRunner, Aggregates(..)
@@ -784,7 +784,6 @@ a ?= b
 
 unsafeFromNullable :: 'Nullable a ~> a
 unsafeFromNullable = Cast
-
 
 --------------------------------------------------------------------------------
 class PGEq a => PGOrd (a :: k) where
