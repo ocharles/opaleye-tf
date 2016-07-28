@@ -19,20 +19,20 @@ let
 
   overrides = {
     overrides = self: super: {
-      transformers-compat = pkgs.haskell.lib.doJailbreak super.transformers-compat_0_5_1_4;
-      aeson = super.aeson_0_11_1_1;
-      fail = pkgs.haskell.lib.dontHaddock super.fail;
-      distributive = pkgs.haskell.lib.dontCheck super.distributive;
-      comonad = pkgs.haskell.lib.doJailbreak (pkgs.haskell.lib.dontCheck super.comonad);
-      bifunctors = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.doJailbreak super.bifunctors);
-      product-profunctors = pkgs.haskell.lib.overrideCabal super.product-profunctors (drv: {
-        src = pkgs.fetchFromGitHub {
-          owner = "ocharles";
-          repo = "product-profunctors";
-          sha256 = "0d7p7j60z1ysr7nfrpzkhcwfkgibzqzdna5v2rv6y5p2w528dhay";
-          rev = "5d9a8bd7ffcebab4083cc30d2b185a22d16d3dea";
-        };
-      });
+      /* transformers-compat = pkgs.haskell.lib.doJailbreak super.transformers-compat_0_5_1_4; */
+      /* aeson = super.aeson_0_11_1_4; */
+      /* fail = pkgs.haskell.lib.dontHaddock super.fail; */
+      /* distributive = pkgs.haskell.lib.dontCheck super.distributive; */
+      /* comonad = pkgs.haskell.lib.doJailbreak (pkgs.haskell.lib.dontCheck super.comonad); */
+      /* bifunctors = pkgs.haskell.lib.dontCheck (pkgs.haskell.lib.doJailbreak super.bifunctors); */
+      /* product-profunctors = pkgs.haskell.lib.overrideCabal super.product-profunctors (drv: { */
+      /*   src = pkgs.fetchFromGitHub { */
+      /*     owner = "ocharles"; */
+      /*     repo = "product-profunctors"; */
+      /*     sha256 = "0d7p7j60z1ysr7nfrpzkhcwfkgibzqzdna5v2rv6y5p2w528dhay"; */
+      /*     rev = "5d9a8bd7ffcebab4083cc30d2b185a22d16d3dea"; */
+      /*   }; */
+      /* }); */
       opaleye = pkgs.haskell.lib.doJailbreak (pkgs.haskell.lib.overrideCabal super.opaleye (drv: {
         src = pkgs.fetchFromGitHub {
           owner = "ocharles";

@@ -7,9 +7,38 @@
 
 module Opaleye.TF.Text where
 
+import qualified Opaleye.Internal.Column              as Op (Column (..), binOp)
 import qualified Opaleye.Internal.HaskellDB.PrimQuery as Op
 import           Opaleye.TF.BaseTypes
 import           Opaleye.TF.Expr
+
+-- * Regular expression operators
+
+-- See https://www.postgresql.org/docs/9.5/static/functions-matching.html#FUNCTIONS-POSIX-REGEXP
+
+-- | Matches regular expression, case sensitive
+(~.) :: Expr s 'PGText -> Expr s 'PGText -> Expr s 'PGBoolean
+Expr a ~. Expr b =
+  case Op.binOp (Op.OpOther "~.") (Op.Column a) (Op.Column b) of
+    Op.Column c -> Expr c
+
+-- | Matches regular expression, case insensitive
+(~*) :: Expr s 'PGText -> Expr s 'PGText -> Expr s 'PGBoolean
+Expr a ~* Expr b =
+  case Op.binOp (Op.OpOther "~*") (Op.Column a) (Op.Column b) of
+    Op.Column c -> Expr c
+
+-- | Does not match regular expression, case sensitive
+(!~) :: Expr s 'PGText -> Expr s 'PGText -> Expr s 'PGBoolean
+Expr a !~ Expr b =
+  case Op.binOp (Op.OpOther "!~") (Op.Column a) (Op.Column b) of
+    Op.Column c -> Expr c
+
+-- | Does not match regular expression, case insensitive
+(!~*) :: Expr s 'PGText -> Expr s 'PGText -> Expr s 'PGBoolean
+Expr a !~* Expr b =
+  case Op.binOp (Op.OpOther "!~*") (Op.Column a) (Op.Column b) of
+    Op.Column c -> Expr c
 
 -- See https://www.postgresql.org/docs/9.5/static/functions-Expr s.'PGHtml
 
