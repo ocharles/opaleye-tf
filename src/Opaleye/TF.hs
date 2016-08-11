@@ -40,6 +40,9 @@ module Opaleye.TF
          -- * Updating data
          update,
 
+         -- * Deleting data
+         delete,
+
          -- * TODO Organize
          Query, unsafeFromNullable,
 
@@ -541,6 +544,22 @@ insert1Returning conn row =
   where remapProps (Op.TableProperties (Op.Writer f) _) =
           Op.TableProperties (Op.Writer f)
                              (Op.View (columnViewRep (Proxy :: Proxy (Rep (rel ExtractSchema)))))
+
+-- | Given a 'Table' and a predicate, @DELETE@ all rows that match.
+delete
+  :: forall (rel :: (k -> *) -> *) boolean.
+     (Generic (rel (Expr 'Z)), ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr 'Z))),KnownSymbol (TableName rel))
+  => PG.Connection
+  -> (rel (Expr 'Z) -> Expr 'Z boolean)
+  -> IO Int64
+delete conn where_ =
+  Op.runDelete conn
+               (Op.Table (symbolVal (Proxy :: Proxy (TableName rel)))
+                         (Op.TableProperties undefined
+                                             (Op.View (columnViewRep (Proxy :: Proxy (Rep (rel ExtractSchema)))))))
+               (\rel ->
+                 case where_ (to rel) of
+                   Expr a -> Op.Column a)
 
 -- | Given a 'Op.Query', filter the rows of the result set according to a
 -- predicate.

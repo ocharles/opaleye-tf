@@ -28,7 +28,9 @@ import Opaleye.TF
        (Selectable, Insertable, Query, Insertion, Interpret, Expr,
         ColumnView, ExtractSchema, PGType(PGBoolean))
 import Opaleye.TF.Scope
+import Opaleye.TF.Table (TableName)
 import qualified Opaleye.TF as Op
+import GHC.TypeLits (KnownSymbol)
 
 --------------------------------------------------------------------------------
 -- | Syntax tree for running individual statements against a database.
@@ -52,6 +54,11 @@ data StatementSyntax :: * -> * where
              Generic (rel (Expr 'Z))) =>
             (rel (Expr 'Z) -> Expr 'Z 'PGBoolean) ->
               (rel (Expr 'Z) -> rel (Expr 'Z)) -> (Int64 -> k) -> StatementSyntax k
+        Delete ::
+            (ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr 'Z))),
+            KnownSymbol (TableName rel),
+            Generic (rel (Expr 'Z))) =>
+            (rel (Expr 'Z) -> Expr 'Z 'PGBoolean) -> (Int64 -> k) -> StatementSyntax k
 
 deriving instance Functor StatementSyntax
 
@@ -81,6 +88,11 @@ update :: (MonadStatement m,Insertable (rel (Expr 'Z)),ColumnView (Rep (rel Extr
        -> (rel (Expr 'Z) -> rel (Expr 'Z))
        -> m Int64
 update where_ up = liftStatements (liftF (Update where_ up id))
+
+delete :: (MonadStatement m,ColumnView (Rep (rel ExtractSchema)) (Rep (rel (Expr 'Z))), KnownSymbol (TableName rel),Generic (rel (Expr 'Z)))
+       => (rel (Expr 'Z) -> Expr 'Z 'PGBoolean)
+       -> m Int64
+delete where_ = liftStatements (liftF (Delete where_ id))
 
 --------------------------------------------------------------------------------
 -- | The class of monads that can perform a rollback, aborting a transaction.
@@ -165,6 +177,7 @@ instance (MonadIO m) => MonadStatement (PostgreSQLStatementT e m) where
             liftIO (Op.insert1Returning pg q) >>= k
           step pg (Insert q k) = liftIO (Op.insert pg q) >>= k
           step pg (Update a b k) = liftIO (Op.update pg a b) >>= k
+          step pg (Delete q k) = liftIO (Op.delete pg q) >>= k
 
 instance (Monad m) => MonadRollback e (PostgreSQLStatementT e m) where
   abortTransaction l = PostgreSQLStatementT (ExceptT (return (Left l)))
