@@ -18,6 +18,7 @@ import Data.Fixed (E0, E1, E2, E3, E6, E9, Fixed)
 import Data.Int (Int32, Int64)
 import Data.Text
 import Data.Time (LocalTime, UTCTime)
+import Data.UUID (UUID)
 import GHC.TypeLits (Nat)
 import qualified Opaleye.Internal.Column as Op
 import qualified Opaleye.PGTypes as Op
@@ -98,6 +99,7 @@ type instance Col Interpret 'PGBytea = ByteString
 type instance Col Interpret ('PGCharacter len) = Text
 type instance Col Interpret ('PGVarchar len) = Text
 type instance Col Interpret 'PGJSON = Aeson.Value
+type instance Col Interpret 'PGUUID = UUID
 
 instance Lit 'PGBigint where
   lit = Expr . Op.unColumn . Op.pgInt8
@@ -131,6 +133,9 @@ instance Lit 'PGDouble where
 
 instance Lit 'PGJSON where
   lit = Expr . Op.unColumn . Op.pgValueJSON
+
+instance Lit 'PGUUID where
+  lit = Expr . Op.unColumn . Op.pgUUID
 
 pgNow :: Expr s ('PGTimestamp 'WithTimeZone)
 pgNow = mapExpr Cast (lit (pack "now") :: Expr s 'PGText)
