@@ -1,6 +1,6 @@
 { mkDerivation, base, bytestring, opaleye, postgresql-simple
 , product-profunctors, profunctors, stdenv, tasty, tasty-hunit
-, text, time, transformers, free
+, text, time, transformers, free, uuid
 }:
 mkDerivation {
   pname = "opaleye-tf";
