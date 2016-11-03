@@ -30,6 +30,7 @@ module Opaleye.TF
          filterQuery, asc, desc, orderNulls, OrderNulls(..), orderBy, limit, offset,
          leftJoinTableOn, leftJoinOn,
          PGEq(..), PGOrd(..), (/=.), (?=), SingleColumn(..), mkSingle, in_,
+         PGNum(..), PGSum(..),
 
          -- ** Aggregation
          Aggregate(..), aggregate, count, countDistinct, groupBy, PGMax(max), PGMin(min), mapAggregate,
@@ -755,6 +756,21 @@ instance PGMin a => PGMin ('Nullable a) where
 groupBy :: PGEq a => Expr s a -> Aggregate s a
 groupBy (Expr a) = Aggregate Nothing (Expr a) Op.AggrAll
 
+-- | The class of data types that can be aggregated under the @sum@ operation.
+class PGSum (a :: k) (b :: k) | a -> b where
+  sum :: Expr s a -> Aggregate s b
+  sum (Expr a) = Aggregate (Just Op.AggrSum) (Expr a) Op.AggrAll
+
+-- instance PGSum 'PGBigint ('PGNumeric p s) TODO What are p and s?
+-- instance PGSum ('PGNumeric p s)  TODO What are p and s?
+
+instance PGSum 'PGDouble 'PGDouble
+instance PGSum 'PGInteger 'PGBigint
+instance PGSum 'PGInterval 'PGInterval
+instance PGSum 'PGMoney 'PGMoney
+instance PGSum 'PGReal 'PGReal
+instance PGSum 'PGSmallint 'PGBigint
+
 --------------------------------------------------------------------------------
 class PGEq (a :: k) where
   -- | The PostgreSQL @=@ operator.
@@ -837,6 +853,15 @@ instance PGOrd (a :: PGType) where
 
   Expr a >=. Expr b =
     case Op.binOp Op.OpGtEq (Op.Column a) (Op.Column b) of
+      Op.Column c -> Expr c
+
+--------------------------------------------------------------------------------
+class PGNum (a :: k) where
+  (*.) :: Expr s a -> Expr s a -> Expr s a
+
+instance PGNum (a :: PGType) where
+  Expr a *. Expr b =
+    case Op.binOp Op.OpMul (Op.Column a) (Op.Column b) of
       Op.Column c -> Expr c
 
 --------------------------------------------------------------------------------
