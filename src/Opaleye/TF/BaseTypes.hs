@@ -99,6 +99,7 @@ type instance Col Interpret 'PGBytea = ByteString
 type instance Col Interpret ('PGCharacter len) = Text
 type instance Col Interpret ('PGVarchar len) = Text
 type instance Col Interpret 'PGJSON = Aeson.Value
+type instance Col Interpret 'PGJSONB = Aeson.Value
 type instance Col Interpret 'PGUUID = UUID
 
 instance Lit 'PGBigint where
@@ -132,6 +133,9 @@ instance Lit 'PGDouble where
   lit = Expr . Op.unColumn . Op.pgDouble
 
 instance Lit 'PGJSON where
+  lit = Expr . Op.unColumn . Op.pgValueJSON
+
+instance Lit 'PGJSONB where
   lit = Expr . Op.unColumn . Op.pgValueJSON
 
 instance Lit 'PGUUID where
