@@ -254,7 +254,7 @@ instance GDistributeMaybe (K1 i (Maybe a)) (K1 i a) where
   gdistributeMaybe (K1 a) = fmap K1 a
 
 instance GDistributeMaybe (K1 i (Maybe a)) (K1 i (Maybe a)) where
-  gdistributeMaybe (K1 a) = fmap (K1 . Just) a
+  gdistributeMaybe (K1 a) = Just (K1 a)
 
 -- Tuples
 instance (Selectable e1 h1, Selectable e2 h2) => Selectable (e1,e2) (h1,h2) where
